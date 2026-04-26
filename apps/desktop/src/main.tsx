@@ -10,6 +10,8 @@ import Settings from "./pages/Settings";
 import History from "./pages/History";
 import AddRepository from "./pages/AddRepository";
 import RepoDetail from "./pages/RepoDetail";
+import Automations from "./pages/Automations";
+import CreateAutomation from "./pages/CreateAutomation";
 
 import "./styles.css";
 
@@ -28,6 +30,8 @@ render(
       <Route path="/settings" component={Settings} />
       <Route path="/repos/add" component={AddRepository} />
       <Route path="/repos/:id" component={RepoDetail} />
+      <Route path="/automations" component={Automations} />
+      <Route path="/automations/new" component={CreateAutomation} />
     </Router>
   ),
   root,

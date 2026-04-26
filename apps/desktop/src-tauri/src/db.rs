@@ -198,6 +198,148 @@ impl Db {
         Ok(())
     }
 
+    // ── automations helpers ─────────────────────────────────────────────────
+
+    pub fn insert_automation(&self, row: &NewAutomationRow<'_>) -> Result<i64, DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO automations (name, agent_id, trigger_kind, trigger_config, guards, enabled, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![row.name, row.agent_id, row.trigger_kind, row.trigger_config, row.guards, row.enabled as i64, row.created_at],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_automations(&self) -> Result<Vec<AutomationRow>, DbError> {
+        let conn = self.0.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, agent_id, trigger_kind, trigger_config, guards, enabled, created_at, last_run_at, last_run_status \
+             FROM automations ORDER BY created_at",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(AutomationRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    agent_id: row.get(2)?,
+                    trigger_kind: row.get(3)?,
+                    trigger_config: row.get(4)?,
+                    guards: row.get(5)?,
+                    enabled: row.get::<_, i64>(6)? != 0,
+                    created_at: row.get(7)?,
+                    last_run_at: row.get(8)?,
+                    last_run_status: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn delete_automation(&self, id: i64) -> Result<(), DbError> {
+        let conn = self.0.lock();
+        conn.execute("DELETE FROM automations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn set_automation_enabled(&self, id: i64, enabled: bool) -> Result<(), DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "UPDATE automations SET enabled = ?2 WHERE id = ?1",
+            params![id, enabled as i64],
+        )?;
+        Ok(())
+    }
+
+    pub fn already_processed(&self, automation_id: i64, event_id: &str) -> Result<bool, DbError> {
+        let conn = self.0.lock();
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM processed_events WHERE automation_id = ?1 AND event_id = ?2",
+            params![automation_id, event_id],
+            |row| row.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
+    pub fn mark_processed(
+        &self,
+        automation_id: i64,
+        event_id: &str,
+        processed_at: i64,
+    ) -> Result<(), DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT OR IGNORE INTO processed_events (automation_id, event_id, processed_at) VALUES (?1, ?2, ?3)",
+            params![automation_id, event_id, processed_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn record_automation_run_start(
+        &self,
+        automation_id: i64,
+        started_at: i64,
+    ) -> Result<i64, DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO automation_runs (automation_id, started_at, status) VALUES (?1, ?2, 'running')",
+            params![automation_id, started_at],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn record_automation_run_end(
+        &self,
+        run_id: i64,
+        ended_at: i64,
+        status: &str,
+        output: Option<&str>,
+        error: Option<&str>,
+    ) -> Result<(), DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "UPDATE automation_runs SET ended_at = ?2, status = ?3, output_text = ?4, error_text = ?5 WHERE id = ?1",
+            params![run_id, ended_at, status, output, error],
+        )?;
+        Ok(())
+    }
+
+    pub fn runs_last_hour(&self, automation_id: i64, now: i64) -> Result<u32, DbError> {
+        let conn = self.0.lock();
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM automation_runs WHERE automation_id = ?1 AND started_at >= ?2",
+            params![automation_id, now - 3600],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
+    pub fn list_automation_runs(
+        &self,
+        automation_id: i64,
+        limit: i64,
+    ) -> Result<Vec<AutomationRunRow>, DbError> {
+        let conn = self.0.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, automation_id, started_at, ended_at, status, output_text, error_text, dry_run \
+             FROM automation_runs WHERE automation_id = ?1 ORDER BY started_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![automation_id, limit], |row| {
+                Ok(AutomationRunRow {
+                    id: row.get(0)?,
+                    automation_id: row.get(1)?,
+                    started_at: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    status: row.get(4)?,
+                    output_text: row.get(5)?,
+                    error_text: row.get(6)?,
+                    dry_run: row.get::<_, i64>(7)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn record_start(&self, row: &ExecutionStart<'_>) -> Result<(), DbError> {
         let conn = self.0.lock();
         conn.execute(
@@ -255,6 +397,45 @@ impl Db {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct NewAutomationRow<'a> {
+    pub name: &'a str,
+    pub agent_id: &'a str,
+    pub trigger_kind: &'a str,
+    pub trigger_config: &'a str,
+    pub guards: &'a str,
+    pub enabled: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRow {
+    pub id: i64,
+    pub name: String,
+    pub agent_id: String,
+    pub trigger_kind: String,
+    pub trigger_config: String,
+    pub guards: String,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub last_run_at: Option<i64>,
+    pub last_run_status: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunRow {
+    pub id: i64,
+    pub automation_id: Option<i64>,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub status: String,
+    pub output_text: Option<String>,
+    pub error_text: Option<String>,
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone)]

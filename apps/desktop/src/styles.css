@@ -885,3 +885,9 @@ code {
   margin: 0;
   word-break: break-all;
 }
+
+.agent-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}

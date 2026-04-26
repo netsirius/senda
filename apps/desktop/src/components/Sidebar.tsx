@@ -52,6 +52,13 @@ const Sidebar: Component = () => {
         <A class="nav-link" classList={{ active: isActive("/automations") }} href="/automations">
           Scheduler
         </A>
+        <A
+          class="nav-link"
+          classList={{ active: isActive("/automations/new") }}
+          href="/automations/new"
+        >
+          + New automation
+        </A>
 
         <div class="sidebar-grow" />
 

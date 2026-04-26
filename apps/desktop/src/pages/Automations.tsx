@@ -1,4 +1,4 @@
-import { createMemo, createResource, For, Show, type Component } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show, type Component } from "solid-js";
 import { A } from "@solidjs/router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -21,8 +21,11 @@ async function fetchAutomations(): Promise<AutomationRow[]> {
   return await invoke<AutomationRow[]>("list_automations");
 }
 
+type Filter = "all" | "active" | "paused";
+
 const Automations: Component = () => {
   const [rows, { refetch }] = createResource(fetchAutomations);
+  const [filter, setFilter] = createSignal<Filter>("all");
 
   void listen("automations:changed", () => refetch());
   void listen("automation:fired", () => refetch());
@@ -34,6 +37,18 @@ const Automations: Component = () => {
       active: list.filter((a) => a.enabled).length,
       paused: list.filter((a) => !a.enabled).length,
     };
+  });
+
+  const filtered = createMemo(() => {
+    const list = rows() ?? [];
+    switch (filter()) {
+      case "active":
+        return list.filter((a) => a.enabled);
+      case "paused":
+        return list.filter((a) => !a.enabled);
+      default:
+        return list;
+    }
   });
 
   const toggle = async (row: AutomationRow) => {
@@ -101,9 +116,30 @@ const Automations: Component = () => {
         </div>
 
         <div class="catalog-tabs">
-          <span class="catalog-tab">All <span class="catalog-tab-count">{counts().all}</span></span>
-          <span class="catalog-tab">Active <span class="catalog-tab-count">{counts().active}</span></span>
-          <span class="catalog-tab">Paused <span class="catalog-tab-count">{counts().paused}</span></span>
+          <button
+            type="button"
+            class="catalog-tab"
+            classList={{ active: filter() === "all" }}
+            onClick={() => setFilter("all")}
+          >
+            All <span class="catalog-tab-count">{counts().all}</span>
+          </button>
+          <button
+            type="button"
+            class="catalog-tab"
+            classList={{ active: filter() === "active" }}
+            onClick={() => setFilter("active")}
+          >
+            Active <span class="catalog-tab-count">{counts().active}</span>
+          </button>
+          <button
+            type="button"
+            class="catalog-tab"
+            classList={{ active: filter() === "paused" }}
+            onClick={() => setFilter("paused")}
+          >
+            Paused <span class="catalog-tab-count">{counts().paused}</span>
+          </button>
         </div>
       </header>
 
@@ -112,14 +148,45 @@ const Automations: Component = () => {
         fallback={
           <div class="empty-state">
             <h2>No automations yet</h2>
-            <p class="muted">
+            <p class="muted" style="margin-bottom:16px">
               Create one to run agents on a cron, react to webhooks, or kick off manual jobs.
             </p>
+            <p class="muted small" style="margin-bottom:24px">
+              Empieza por aquí:
+            </p>
+            <div style="display:flex; gap:12px; flex-wrap:wrap">
+              <A class="btn-primary" href="/automations/new">
+                Create your first automation
+              </A>
+              <A class="btn-secondary" href="/automations/new">
+                📚 Browse 12 ready-to-use templates
+              </A>
+            </div>
+            <hr style="margin:24px 0; border:none; border-top:1px solid var(--border)" />
+            <h3>¿Qué pongo aquí?</h3>
+            <ul class="muted small" style="padding-left:18px; line-height:1.6">
+              <li>
+                <strong>Cron:</strong> "Cada 15 min triage tickets de Jira" — escoge el template
+                <em>Triage Jira</em>
+              </li>
+              <li>
+                <strong>Webhook:</strong> "Cuando GitHub abre un PR" — template{" "}
+                <em>GitHub PR review</em>
+              </li>
+              <li>
+                <strong>Manual:</strong> "Quiero un agente que ejecuto a mano" — usa{" "}
+                <em>Investigación manual</em>
+              </li>
+              <li>
+                <strong>Compuesto:</strong> "Lee Jira → publica en Confluence → notifica
+                Slack" — template <em>Weekly digest Jira→Confluence</em>
+              </li>
+            </ul>
           </div>
         }
       >
         <div class="agent-grid">
-          <For each={rows()}>
+          <For each={filtered()}>
             {(row) => (
               <article class="agent-card">
                 <header class="agent-card-header">

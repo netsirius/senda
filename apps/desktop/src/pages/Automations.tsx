@@ -48,7 +48,18 @@ const Automations: Component = () => {
   };
 
   const runNow = async (row: AutomationRow) => {
-    await invoke("run_automation_now", { id: row.id, dryRun: false });
+    try {
+      await invoke("run_automation_now", { id: row.id, dryRun: false });
+      // The actual run happens async on the scheduler thread; refresh after
+      // a short delay so the user sees the resulting row in /history.
+      setTimeout(() => refetch(), 1500);
+      alert(
+        `Dispatched "${row.name}". Check History (or this card's last_run_status) in a few seconds.`,
+      );
+    } catch (e) {
+      console.error("[senda] run_automation_now failed", e);
+      alert(`Run failed: ${e}`);
+    }
   };
 
   const testWebhook = async (row: AutomationRow) => {

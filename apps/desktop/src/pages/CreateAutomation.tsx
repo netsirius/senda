@@ -117,27 +117,33 @@ ${a.body}`;
         if (eq <= 0) continue;
         variables[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
       }
-      await invoke("create_automation", {
-        args: {
-          name: name(),
-          agentId: agentId(),
-          trigger: buildTrigger(),
-          guards: {
-            idempotency: idempotency(),
-            rateLimitPerHour: rateLimit(),
-            approvalGate: approvalGate(),
-            backpressure: "skip",
-          },
-          promptTemplate: promptTemplate().trim() ? promptTemplate() : null,
-          variables,
-          includeLastOutput: includeLastOutput(),
-          chain: chainAgentIds(),
-          enabled: true,
+      // Guard against the "I added a chain step but never picked an agent"
+      // case — Solid's chainAgentIds() can include "" entries.
+      const chain = chainAgentIds().filter((id) => id.trim().length > 0);
+      const args = {
+        name: name().trim(),
+        agentId: agentId(),
+        trigger: buildTrigger(),
+        guards: {
+          idempotency: idempotency(),
+          rateLimitPerHour: rateLimit(),
+          approvalGate: approvalGate(),
+          backpressure: "skip",
         },
-      });
+        promptTemplate: promptTemplate().trim() ? promptTemplate() : null,
+        variables,
+        includeLastOutput: includeLastOutput(),
+        chain,
+        enabled: true,
+      };
+      console.log("[senda] create_automation", args);
+      await invoke("create_automation", { args });
       navigate("/automations");
     } catch (e) {
-      setError(String(e));
+      const msg = String(e);
+      console.error("[senda] create_automation failed", e);
+      setError(msg);
+      alert(`Failed to create automation:\n\n${msg}`);
     } finally {
       setBusy(false);
     }

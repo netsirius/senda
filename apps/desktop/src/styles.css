@@ -1086,6 +1086,14 @@ code {
   flex-wrap: wrap;
 }
 
+.template-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .env-grid {
   display: flex;
   flex-direction: column;

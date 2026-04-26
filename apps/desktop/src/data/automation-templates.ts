@@ -248,4 +248,287 @@ export const TEMPLATES: AutomationTemplate[] = [
       "Investiga {event}. Devuelve hallazgos en bullets, evidencia incluida.",
     guards: { idempotency: false, rateLimitPerHour: 30, approvalGate: false, backpressure: "skip" },
   },
+
+  // ── Compound templates — multi-tool / multi-MCP orchestration ────────────
+  // These exist to teach the pattern: ONE agent can chain reads + writes
+  // across MCPs in a single LLM session. Pick the closest one, swap the
+  // {{PLACEHOLDERS}} for your real values, and you have a working chain.
+
+  {
+    id: "weekly-jira-confluence-digest",
+    name: "Weekly digest: Jira → Confluence",
+    category: "Compound",
+    description:
+      "Cada lunes 9:00 lee los tickets cerrados la semana pasada, agrupa por componente y publica un resumen ejecutivo en Confluence.",
+    requires: [
+      "MCP `atlassian` añadido (cubre Jira + Confluence en uno)",
+      "Página Confluence destino: 'Weekly Platform Update' en el space PLAT — créala vacía la primera vez",
+    ],
+    trigger: { kind: "schedule", cron: "0 9 * * 1", timezone: "UTC" },
+    promptTemplate:
+      "Genera el digest semanal del proyecto y publícalo en Confluence. Reemplaza la página existente.",
+    guards: { idempotency: true, rateLimitPerHour: 5, approvalGate: false, backpressure: "skip" },
+    starterAgent: {
+      name: "weekly-platform-digest",
+      description: "Resume actividad de Jira de la semana y la publica en Confluence.",
+      targets: ["claude-code"],
+      tools: [
+        "jira/search_issues",
+        "confluence/search",
+        "confluence/get_page",
+        "confluence/update_page",
+        "confluence/create_page",
+      ],
+      body: `Eres el redactor del digest semanal del equipo Platform.
+
+## Constantes (sustituye con los tuyos)
+
+- **Project key**: PLAT
+- **Confluence space**: PLAT
+- **Página destino**: "Weekly Platform Update"
+- **Componentes que importan**: Auth, Billing, API, SRE
+
+## Tarea
+
+1. \`jira/search_issues\` con JQL:
+     project = PLAT AND status = Done AND resolved >= -7d
+2. Agrupa los issues por **component** (campo \`components[0].name\`).
+3. Para cada componente compón un párrafo (3-5 líneas) que destaque:
+   - Cuántos tickets se cerraron
+   - 2-3 highlights con su key (PLAT-1234)
+   - Contributors únicos (assignee.displayName)
+4. Construye un Markdown con esta estructura:
+     # Weekly Platform Update — semana del {{Monday}} al {{Sunday}}
+     ## Auth
+     <párrafo>
+     ## Billing
+     <párrafo>
+     ...
+5. \`confluence/search\` la página "Weekly Platform Update" en space PLAT.
+   - Si existe → \`confluence/update_page\` con el Markdown convertido a storage format.
+   - Si no existe → \`confluence/create_page\` bajo el space PLAT como página raíz.
+6. Devuelve el link de la página al final del output.
+
+## Reglas
+
+- Si no hubo movimiento en un componente, lo omites (no escribas "no hubo
+  cambios", solo no incluyas la sección).
+- Si Jira devuelve 0 issues, NO publiques en Confluence — devuelve solo:
+  "No closed tickets last week, skipping digest."
+- Sé terse. Bullets > prosa.
+`,
+    },
+  },
+
+  {
+    id: "jira-p0-to-linear",
+    name: "Cross-MCP: Jira P0 → Linear incident",
+    category: "Compound",
+    description:
+      "Cuando aparece un P0 en Jira, crea automáticamente un issue de incidente en Linear y enlaza ambos.",
+    requires: [
+      "MCP `atlassian` (Jira)",
+      "MCP `linear`",
+      "Project key Jira y team_id Linear que tienes que sustituir en el body",
+      "Approval gate ON: el template lo activa porque crear incidents en Linear es escritura cross-tool",
+    ],
+    trigger: { kind: "schedule", cron: "*/10 * * * *", timezone: "UTC" },
+    promptTemplate:
+      "Busca P0 nuevos en Jira y créalos como incidents en Linear si aún no están sincronizados.",
+    guards: { idempotency: true, rateLimitPerHour: 30, approvalGate: true, backpressure: "skip" },
+    starterAgent: {
+      name: "jira-p0-bridge",
+      description: "Sincroniza tickets P0 de Jira hacia Linear como incidents.",
+      targets: ["claude-code"],
+      tools: [
+        "jira/search_issues",
+        "jira/get_issue",
+        "jira/add_comment",
+        "linear/list_issues",
+        "linear/create_issue",
+      ],
+      body: `Eres el puente entre Jira y Linear para incidents.
+
+## Constantes
+
+- **Jira project**: PLAT
+- **Linear team_id**: TEAM_PLATFORM
+- **Linear label**: incident-from-jira
+
+## Tarea
+
+1. \`jira/search_issues\` con JQL:
+     project = PLAT AND priority = Blocker AND created >= -1h
+2. Para cada issue:
+   a. \`linear/list_issues\` filtrando por descripción que contenga el Jira key
+      — esto es el chequeo de "¿ya existe en Linear?".
+   b. Si NO existe:
+      - \`jira/get_issue\` para extraer summary, description, reporter
+      - \`linear/create_issue\` con:
+          team: {{LINEAR_TEAM_ID}}
+          title: "[{{JIRA_KEY}}] {{summary}}"
+          description: incluye link a Jira + summary original
+          priority: 1 (Urgent en Linear)
+          labels: ["incident-from-jira"]
+      - Anota el resultado.
+   c. Si ya existe → skip.
+3. Después de procesar todos, vuelve a Jira:
+   - Por cada Jira sincronizado nuevo → \`jira/add_comment\`:
+     "Mirrored to Linear: {{LINEAR_URL}}"
+
+## Output
+
+Lista qué creaste:
+- PLAT-1234 → LINEAR-ENG-567 (created)
+- PLAT-1235 → already in Linear (skipped)
+`,
+    },
+  },
+
+  {
+    id: "stale-confluence-pages",
+    name: "Compound: Confluence stale pages → Jira review tasks",
+    category: "Compound",
+    description:
+      "Una vez al mes detecta páginas Confluence sin actualizar en 6 meses y crea un ticket Jira asignado al autor pidiendo review.",
+    requires: [
+      "MCP `atlassian` (Confluence + Jira)",
+      "Project key Jira para los tickets de review",
+    ],
+    trigger: { kind: "schedule", cron: "0 9 1 * *", timezone: "UTC" },
+    promptTemplate: "Detecta páginas obsoletas y crea tickets de review.",
+    guards: { idempotency: true, rateLimitPerHour: 5, approvalGate: false, backpressure: "skip" },
+    starterAgent: {
+      name: "confluence-stale-detector",
+      description: "Encuentra páginas Confluence viejas y abre tickets de review en Jira.",
+      targets: ["claude-code"],
+      tools: [
+        "confluence/search",
+        "confluence/get_page",
+        "jira/search_issues",
+        "jira/create_issue",
+        "jira/assign_issue",
+      ],
+      body: `Eres el guardián de la documentación. Tu job es asegurar que las
+páginas Confluence importantes se mantengan vigentes.
+
+## Constantes
+
+- **Confluence space**: ENG
+- **Jira project (para tickets)**: DOCS
+- **Umbral de "stale"**: 180 días sin updates
+- **Excluir labels**: ["archived", "external", "playground"]
+
+## Tarea
+
+1. \`confluence/search\` con CQL:
+     space = ENG AND lastModified < now("-180d") AND label != "archived"
+2. Para cada página resultante:
+   a. \`confluence/get_page\` para extraer last_editor.username
+   b. Comprueba si ya hay ticket abierto:
+      \`jira/search_issues\` con JQL:
+        project = DOCS AND status != Done AND summary ~ "Review {{PAGE_TITLE}}"
+   c. Si NO hay → \`jira/create_issue\`:
+        project: DOCS
+        type: Task
+        summary: "Review stale page: {{PAGE_TITLE}}"
+        description:
+          "Page hasn't been updated since {{lastModified}}.
+          {{PAGE_URL}}
+          Either update with current state, archive, or close this ticket if
+          intentional."
+        priority: Low
+   d. \`jira/assign_issue\` al last_editor (si tiene cuenta Jira;
+      si no, déjalo unassigned y comenta "Original author not in Jira").
+
+## Reglas
+
+- Si una página tiene >1 año stale Y está en root del space → priority=Medium.
+- Nunca crees más de 50 tickets en una ejecución (rate limit cortés con tu
+  proyecto Jira).
+
+## Output
+
+Resume tickets creados con sus IDs.
+`,
+    },
+  },
+
+  {
+    id: "support-webhook-triage",
+    name: "Webhook: Support → Confluence FAQ + Linear",
+    category: "Compound",
+    description:
+      "Cuando llega un ticket de soporte (webhook), busca en Confluence FAQ; si hay match, sugiere respuesta; si no, crea bug en Linear.",
+    requires: [
+      "MCP `atlassian` (Confluence)",
+      "MCP `linear`",
+      "Webhook desde tu sistema de soporte (Zendesk/Intercom/etc) apuntando a localhost:9876/hook/support — necesita túnel (ngrok) si la fuente es externa",
+    ],
+    trigger: { kind: "webhook", path: "support" },
+    promptTemplate:
+      "Triage del ticket de soporte recibido en {event}. Busca FAQ matching, crea bug si aplica.",
+    guards: { idempotency: true, rateLimitPerHour: 200, approvalGate: false, backpressure: "skip" },
+    starterAgent: {
+      name: "support-triage-bridge",
+      description: "Triage de tickets de soporte: busca FAQ y escala a Linear si es bug.",
+      targets: ["claude-code"],
+      tools: [
+        "confluence/search",
+        "confluence/get_page",
+        "linear/create_issue",
+      ],
+      body: `Eres el primer triage de tickets de soporte.
+
+## Payload
+
+El webhook trae el ticket en {event} con esta forma esperada:
+\`\`\`json
+{
+  "id": "TICK-1234",
+  "subject": "...",
+  "body": "...",
+  "customer": { "email": "...", "tier": "free|pro|enterprise" }
+}
+\`\`\`
+
+## Decisión
+
+1. Extrae intent del subject + body. Categorías:
+   - **how-to** (cómo hacer X): probablemente FAQ-able
+   - **bug**: comportamiento inesperado, error message
+   - **feature-request**: pedido nuevo
+   - **billing**: stripe, factura, downgrade
+   - **other**
+
+2. Si **how-to**:
+   - \`confluence/search\` en space DOCS con CQL: \`title ~ "{{terms}}"\`
+   - Si encuentras match (≥80% confidence):
+     - Output: "MATCH FAQ: <page_title> — <page_url>. Suggested reply: <2-paragraph rephrasing of the page in customer's tone>"
+   - Si no:
+     - Output: "No FAQ match. Suggested reply: <crafted from your knowledge>. Consider adding to FAQ."
+
+3. Si **bug**:
+   - \`linear/create_issue\`:
+       team: TEAM_PRODUCT
+       title: "[Support] {{ticket.subject}}"
+       description: incluye email del cliente + body del ticket + reproducción si la hay
+       priority: customer.tier === "enterprise" ? 1 (Urgent) : 2 (High)
+       labels: ["from-support", "bug"]
+   - Output: "Created Linear issue {{LINEAR_ID}}"
+
+4. Si **feature-request**:
+   - No abras ticket, solo responde con clasificación + suggested response:
+     "Thanks for the suggestion! We track requests at <url>. Voted up."
+
+5. Si **billing** o **other**:
+   - Output: "Routing to human. Category: <X>"
+
+## Reglas
+
+- Tier "enterprise" siempre route a humano si dudas.
+- Nunca cierres el ticket original (no tienes esos tools — solo sugerimos).
+`,
+    },
+  },
 ];

@@ -31,6 +31,27 @@ const CreateAutomation: Component = () => {
     (entries() ?? []).filter((e) => e.kind === "agent"),
   );
 
+  const scaffoldAgentSource = (t: AutomationTemplate): string | null => {
+    if (!t.starterAgent) return null;
+    const a = t.starterAgent;
+    const tools = a.tools.length > 0 ? `[${a.tools.join(", ")}]` : "[]";
+    const targets = a.targets.length > 0 ? `[${a.targets.join(", ")}]` : "[copilot]";
+    return `---
+name: ${a.name}
+description: ${a.description.replace(/[:\n]/g, " ")}
+targets: ${targets}
+tools: ${tools}
+---
+
+${a.body}`;
+  };
+
+  const createMatchingAgent = (t: AutomationTemplate) => {
+    const source = scaffoldAgentSource(t);
+    if (!source) return;
+    navigate(`/agent/edit?template=${encodeURIComponent(source)}`);
+  };
+
   const applyTemplate = (t: AutomationTemplate) => {
     setName(t.id);
     setTriggerKind(t.trigger.kind);
@@ -122,7 +143,7 @@ const CreateAutomation: Component = () => {
         <div class="template-grid">
           <For each={TEMPLATES}>
             {(t) => (
-              <button class="template-card" onClick={() => applyTemplate(t)}>
+              <div class="template-card">
                 <div class="template-card-meta">
                   <span class="badge badge-muted">{t.category}</span>
                   <span class="badge badge-muted">{t.trigger.kind}</span>
@@ -134,13 +155,27 @@ const CreateAutomation: Component = () => {
                 <p>{t.description}</p>
                 <Show when={t.requires.length > 0}>
                   <p class="muted small">
-                    Requires:
+                    <strong>Requires:</strong>
                     <ul>
                       <For each={t.requires}>{(r) => <li>{r}</li>}</For>
                     </ul>
                   </p>
                 </Show>
-              </button>
+                <div class="template-card-actions">
+                  <button class="btn-primary small" onClick={() => applyTemplate(t)}>
+                    Use template
+                  </button>
+                  <Show when={t.starterAgent}>
+                    <button
+                      class="btn-secondary small"
+                      onClick={() => createMatchingAgent(t)}
+                      title="Opens the editor with the matching agent pre-filled. Save it, come back here, and it'll be in the Agent dropdown."
+                    >
+                      Scaffold agent →
+                    </button>
+                  </Show>
+                </div>
+              </div>
             )}
           </For>
         </div>

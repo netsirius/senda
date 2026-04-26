@@ -17,6 +17,7 @@ import CreateWizard from "./pages/CreateWizard";
 import PublishFlow from "./pages/PublishFlow";
 import Mcps from "./pages/Mcps";
 import Skills from "./pages/Skills";
+import Approvals from "./pages/Approvals";
 
 import "./styles.css";
 
@@ -37,6 +38,7 @@ render(
       <Route path="/repos/:id" component={RepoDetail} />
       <Route path="/automations" component={Automations} />
       <Route path="/automations/new" component={CreateAutomation} />
+      <Route path="/approvals" component={Approvals} />
       <Route path="/agent/edit" component={AgentEditor} />
       <Route path="/agent/publish" component={PublishFlow} />
       <Route path="/create" component={CreateWizard} />

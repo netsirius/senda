@@ -104,6 +104,7 @@ impl Db {
                 ended_at        INTEGER,
                 status          TEXT NOT NULL,
                 trigger_event_id TEXT,
+                pending_prompt  TEXT,
                 output_text     TEXT,
                 error_text      TEXT,
                 dry_run         INTEGER NOT NULL DEFAULT 0,
@@ -136,6 +137,10 @@ impl Db {
         // "duplicate column" error so re-runs are no-ops.
         let _ = conn.execute(
             "ALTER TABLE automations ADD COLUMN prompt_template TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE automation_runs ADD COLUMN pending_prompt TEXT",
             [],
         );
         Ok(())
@@ -297,6 +302,88 @@ impl Db {
             params![automation_id, started_at],
         )?;
         Ok(conn.last_insert_rowid())
+    }
+
+    pub fn record_pending_run(
+        &self,
+        automation_id: i64,
+        started_at: i64,
+        prompt: &str,
+    ) -> Result<i64, DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO automation_runs (automation_id, started_at, status, pending_prompt) \
+             VALUES (?1, ?2, 'awaiting_approval', ?3)",
+            params![automation_id, started_at, prompt],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_pending_runs(&self) -> Result<Vec<PendingRun>, DbError> {
+        let conn = self.0.lock();
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.automation_id, a.name, a.agent_id, r.started_at, r.pending_prompt \
+             FROM automation_runs r \
+             JOIN automations a ON a.id = r.automation_id \
+             WHERE r.status = 'awaiting_approval' \
+             ORDER BY r.started_at DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(PendingRun {
+                    id: row.get(0)?,
+                    automation_id: row.get(1)?,
+                    automation_name: row.get(2)?,
+                    agent_id: row.get(3)?,
+                    queued_at: row.get(4)?,
+                    prompt: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn take_pending_run(&self, run_id: i64) -> Result<Option<PendingRun>, DbError> {
+        let conn = self.0.lock();
+        let row = conn
+            .query_row(
+                "SELECT r.id, r.automation_id, a.name, a.agent_id, r.started_at, r.pending_prompt \
+                 FROM automation_runs r \
+                 JOIN automations a ON a.id = r.automation_id \
+                 WHERE r.id = ?1 AND r.status = 'awaiting_approval'",
+                params![run_id],
+                |row| {
+                    Ok(PendingRun {
+                        id: row.get(0)?,
+                        automation_id: row.get(1)?,
+                        automation_name: row.get(2)?,
+                        agent_id: row.get(3)?,
+                        queued_at: row.get(4)?,
+                        prompt: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                    })
+                },
+            )
+            .ok();
+        Ok(row)
+    }
+
+    pub fn mark_pending_run_status(&self, run_id: i64, status: &str) -> Result<(), DbError> {
+        let conn = self.0.lock();
+        conn.execute(
+            "UPDATE automation_runs SET status = ?2 WHERE id = ?1",
+            params![run_id, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn count_pending_runs(&self) -> Result<u32, DbError> {
+        let conn = self.0.lock();
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM automation_runs WHERE status = 'awaiting_approval'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
     }
 
     pub fn record_automation_run_end(
@@ -492,6 +579,17 @@ pub struct AutomationRow {
     pub created_at: i64,
     pub last_run_at: Option<i64>,
     pub last_run_status: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingRun {
+    pub id: i64,
+    pub automation_id: i64,
+    pub automation_name: String,
+    pub agent_id: String,
+    pub queued_at: i64,
+    pub prompt: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

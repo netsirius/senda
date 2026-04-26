@@ -19,11 +19,12 @@ const RUN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 pub struct SqliteStore {
     db: Db,
+    app: AppHandle,
 }
 
 impl SqliteStore {
-    pub fn new(db: Db) -> Self {
-        Self { db }
+    pub fn new(db: Db, app: AppHandle) -> Self {
+        Self { db, app }
     }
 }
 
@@ -56,6 +57,14 @@ impl Store for SqliteStore {
         self.db
             .runs_last_hour(automation_id, unix_now())
             .unwrap_or(0)
+    }
+    async fn record_pending_run(&self, automation_id: i64, started_at: i64, prompt: &str) -> i64 {
+        let id = self
+            .db
+            .record_pending_run(automation_id, started_at, prompt)
+            .unwrap_or(0);
+        let _ = self.app.emit("approvals:changed", ());
+        id
     }
 }
 
@@ -124,7 +133,7 @@ pub fn spawn_scheduler(app: AppHandle, db: Db) -> Arc<Scheduler> {
         app: app.clone(),
         db: db.clone(),
     });
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(db.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(db.clone(), app.clone()));
 
     tauri::async_runtime::block_on(async move {
         let scheduler = Scheduler::new(runner, store).await.expect("scheduler init");

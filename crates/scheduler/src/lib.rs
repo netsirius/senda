@@ -82,6 +82,17 @@ pub trait Store: Send + Sync + 'static {
     /// Returns how many runs the given automation completed in the last hour.
     /// Used for rate-limiting.
     async fn runs_last_hour(&self, automation_id: i64) -> u32;
+    /// Persist a "needs human approval" entry. The host approves it later via
+    /// its own command path, replaying the prompt against the agent runner.
+    /// Default impl is a no-op so existing tests that don't care still work.
+    async fn record_pending_run(
+        &self,
+        _automation_id: i64,
+        _started_at: i64,
+        _prompt: &str,
+    ) -> i64 {
+        0
+    }
 }
 
 pub struct Scheduler {
@@ -354,6 +365,25 @@ async fn fire(
         Some(t) if !t.is_empty() => t.replace("{event}", &trigger_payload),
         _ => trigger_payload,
     };
+
+    // Approval gate — instead of running, queue the run for human review.
+    // The host (Tauri command) picks it up and replays the prompt when the
+    // user clicks Approve. Idempotency was already checked above so two
+    // concurrent fires for the same event still queue once.
+    if automation.guards.approval_gate {
+        let started_at = chrono::Utc::now().timestamp();
+        store
+            .record_pending_run(automation.id, started_at, &prompt)
+            .await;
+        if automation.guards.idempotency {
+            store.mark_processed(automation.id, &event_id).await;
+        }
+        tracing::info!(
+            automation = automation.id,
+            "queued for approval — open /approvals to review"
+        );
+        return;
+    }
 
     if automation.guards.rate_limit_per_hour > 0
         && store.runs_last_hour(automation.id).await >= automation.guards.rate_limit_per_hour

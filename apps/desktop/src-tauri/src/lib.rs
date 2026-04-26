@@ -17,8 +17,9 @@ mod sync;
 
 use commands::agents::read_catalog;
 use commands::automations::{
-    create_automation, delete_automation, list_automation_runs, list_automations,
-    list_recent_automation_runs, run_automation_now, set_automation_enabled, webhook_self_test,
+    approve_pending_run, count_pending_approvals, create_automation, delete_automation,
+    list_automation_runs, list_automations, list_pending_approvals, list_recent_automation_runs,
+    reject_pending_run, run_automation_now, set_automation_enabled, webhook_self_test,
 };
 use commands::discovery::{
     add_mcp, create_skill, delete_mcp, delete_skill, introspect_mcp_tools, list_builtin_tools,
@@ -71,6 +72,10 @@ pub fn run() {
             run_automation_now,
             list_automation_runs,
             list_recent_automation_runs,
+            list_pending_approvals,
+            count_pending_approvals,
+            approve_pending_run,
+            reject_pending_run,
             webhook_self_test,
             list_executions_for_agent,
             reveal_in_finder,

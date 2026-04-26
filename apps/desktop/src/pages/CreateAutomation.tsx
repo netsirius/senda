@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show, type Component } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { invoke } from "@tauri-apps/api/core";
 import { catalog as entries } from "../stores/catalog";
+import { TEMPLATES, type AutomationTemplate } from "../data/automation-templates";
 
 type TriggerKind = "schedule" | "event" | "webhook" | "manual";
 
@@ -29,6 +30,35 @@ const CreateAutomation: Component = () => {
   const availableAgents = createMemo(() =>
     (entries() ?? []).filter((e) => e.kind === "agent"),
   );
+
+  const applyTemplate = (t: AutomationTemplate) => {
+    setName(t.id);
+    setTriggerKind(t.trigger.kind);
+    if (t.trigger.cron) setCronExpr(t.trigger.cron);
+    if (t.trigger.timezone) setTimezone(t.trigger.timezone);
+    if (t.trigger.path) setWebhookPath(t.trigger.path);
+    if (t.trigger.secret !== undefined) setWebhookSecret(t.trigger.secret);
+    if (t.trigger.mcp !== undefined) setMcpName(t.trigger.mcp);
+    if (t.trigger.pollIntervalSeconds !== undefined)
+      setPollInterval(t.trigger.pollIntervalSeconds);
+    setPromptTemplate(t.promptTemplate);
+    setIdempotency(t.guards.idempotency);
+    setRateLimit(t.guards.rateLimitPerHour);
+    setApprovalGate(t.guards.approvalGate);
+    if (t.starterAgent) {
+      // Pre-select the matching agent if it already exists in the catalog,
+      // otherwise navigate to the editor pre-filled so the user can save it
+      // and come back. We don't auto-create agents — they need explicit
+      // intent.
+      const existing = availableAgents().find(
+        (e) => e.kind === "agent" && e.agent.name === t.starterAgent!.name,
+      );
+      if (existing && existing.kind === "agent") {
+        setAgentId(existing.id);
+      }
+    }
+    setStep("agent");
+  };
 
   const buildTrigger = () => {
     switch (triggerKind()) {
@@ -86,6 +116,35 @@ const CreateAutomation: Component = () => {
         <h1>New automation</h1>
         <p class="page-subtitle">Pick an agent, a trigger, the guards, then review.</p>
       </header>
+
+      <details class="template-picker">
+        <summary>Start from a template</summary>
+        <div class="template-grid">
+          <For each={TEMPLATES}>
+            {(t) => (
+              <button class="template-card" onClick={() => applyTemplate(t)}>
+                <div class="template-card-meta">
+                  <span class="badge badge-muted">{t.category}</span>
+                  <span class="badge badge-muted">{t.trigger.kind}</span>
+                  <Show when={t.guards.approvalGate}>
+                    <span class="badge badge-pending">approval-gated</span>
+                  </Show>
+                </div>
+                <h3>{t.name}</h3>
+                <p>{t.description}</p>
+                <Show when={t.requires.length > 0}>
+                  <p class="muted small">
+                    Requires:
+                    <ul>
+                      <For each={t.requires}>{(r) => <li>{r}</li>}</For>
+                    </ul>
+                  </p>
+                </Show>
+              </button>
+            )}
+          </For>
+        </div>
+      </details>
 
       <ol class="stepper">
         <li classList={{ active: step() === "agent", done: step() !== "agent" }}>1. Agent</li>

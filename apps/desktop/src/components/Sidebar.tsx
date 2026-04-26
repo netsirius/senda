@@ -1,6 +1,7 @@
 import { For, Show, type Component } from "solid-js";
 import { A, useLocation } from "@solidjs/router";
 import { repos } from "../stores/repos";
+import { count as pendingCount } from "../stores/approvals";
 
 const Sidebar: Component = () => {
   const location = useLocation();
@@ -57,6 +58,12 @@ const Sidebar: Component = () => {
         <span class="nav-section">AUTOMATIONS</span>
         <A class="nav-link" classList={{ active: isActive("/automations") }} href="/automations">
           Scheduler
+        </A>
+        <A class="nav-link" classList={{ active: isActive("/approvals") }} href="/approvals">
+          Pending
+          <Show when={(pendingCount() ?? 0) > 0}>
+            <span class="badge badge-pending">{pendingCount()}</span>
+          </Show>
         </A>
         <A
           class="nav-link"

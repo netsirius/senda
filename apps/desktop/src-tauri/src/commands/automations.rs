@@ -3,13 +3,15 @@
 //! threaded through Tauri state.
 
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use senda_core::{Automation, Guards, Trigger};
 use senda_scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
+use tauri::{AppHandle, Emitter};
 
-use crate::db::{AutomationRow, AutomationRunRow, Db};
+use crate::agent_runtime::{resolve_agent, spawn_for_automation};
+use crate::db::{AutomationRow, AutomationRunRow, Db, PendingRun};
 use crate::scheduler_host::{automation_from_row, save_automation_to_db};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -134,6 +136,87 @@ pub async fn list_recent_automation_runs(
 ) -> Result<Vec<AutomationRunRow>, String> {
     db.list_recent_automation_runs(limit.unwrap_or(100))
         .map_err(|e| format!("db: {e}"))
+}
+
+#[tauri::command]
+pub async fn list_pending_approvals(db: tauri::State<'_, Db>) -> Result<Vec<PendingRun>, String> {
+    db.list_pending_runs().map_err(|e| format!("db: {e}"))
+}
+
+#[tauri::command]
+pub async fn count_pending_approvals(db: tauri::State<'_, Db>) -> Result<u32, String> {
+    db.count_pending_runs().map_err(|e| format!("db: {e}"))
+}
+
+#[tauri::command]
+pub async fn reject_pending_run(
+    db: tauri::State<'_, Db>,
+    app: AppHandle,
+    run_id: i64,
+) -> Result<(), String> {
+    db.mark_pending_run_status(run_id, "cancelled")
+        .map_err(|e| format!("db: {e}"))?;
+    let _ = app.emit("approvals:changed", ());
+    Ok(())
+}
+
+/// Approve a pending run and dispatch the agent against the queued prompt.
+/// Bypasses idempotency / rate-limit (the original fire() already cleared
+/// those guards) and writes the outcome straight into the same row.
+#[tauri::command]
+pub async fn approve_pending_run(
+    db: tauri::State<'_, Db>,
+    app: AppHandle,
+    run_id: i64,
+) -> Result<(), String> {
+    let pending = db
+        .take_pending_run(run_id)
+        .map_err(|e| format!("db: {e}"))?
+        .ok_or_else(|| format!("run {run_id} not pending"))?;
+
+    db.mark_pending_run_status(run_id, "running")
+        .map_err(|e| format!("db: {e}"))?;
+    let _ = app.emit("approvals:changed", ());
+
+    let resolved = resolve_agent(db.inner(), &pending.agent_id);
+    let outcome = match resolved {
+        Some((cli, name)) => {
+            let r = spawn_for_automation(
+                cli,
+                &name,
+                &pending.prompt,
+                false,
+                Duration::from_secs(15 * 60),
+            )
+            .await;
+            (r.success, Some(r.output), r.error)
+        }
+        None => (
+            false,
+            None,
+            Some(format!("agent `{}` not found", pending.agent_id)),
+        ),
+    };
+
+    let ended_at = unix_now();
+    let status = if outcome.0 { "success" } else { "failed" };
+    db.record_automation_run_end(
+        run_id,
+        ended_at,
+        status,
+        outcome.1.as_deref(),
+        outcome.2.as_deref(),
+    )
+    .map_err(|e| format!("db: {e}"))?;
+    let _ = app.emit("automation:fired", &pending.automation_id);
+    Ok(())
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Fire a synthetic POST against the local webhook server. Useful for testing

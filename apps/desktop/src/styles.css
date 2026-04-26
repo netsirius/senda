@@ -606,3 +606,126 @@ code {
   padding: 4px 12px;
   color: var(--text-dim);
 }
+
+/* ── Runner ───────────────────────────────────────────────────────────────── */
+.agent-runner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: calc(100vh - 64px);
+}
+
+.runner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.prompt-input {
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: var(--text);
+  resize: vertical;
+  outline: none;
+}
+
+.prompt-input:focus {
+  border-color: var(--accent);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.status {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+}
+
+.status--running {
+  background: rgba(255, 197, 51, 0.18);
+  color: #ffd76b;
+}
+
+.status--succeeded {
+  background: rgba(64, 200, 130, 0.18);
+  color: #6fdca7;
+}
+
+.status--failed,
+.status--cancelled {
+  background: rgba(255, 83, 96, 0.18);
+  color: #ff8a93;
+}
+
+.status-error {
+  color: #ff8a93;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.xterm-host {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 0 8px 12px;
+  min-height: 320px;
+  overflow: hidden;
+}
+
+/* ── Settings ─────────────────────────────────────────────────────────────── */
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.settings-row label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.settings-row input,
+.settings-row select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  outline: none;
+}
+
+.settings-row input:focus,
+.settings-row select:focus {
+  border-color: var(--accent);
+}
+
+.settings-actions {
+  margin-top: 8px;
+}
+
+.sidebar-grow {
+  flex: 1;
+}

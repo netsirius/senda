@@ -18,6 +18,8 @@
     "lucide-solid": "^0.460.0",
     "marked": "^15.0.6",
     "dompurify": "^3.2.4",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
     "senda-shared-types": "workspace:*"
   },
   "devDependencies": {

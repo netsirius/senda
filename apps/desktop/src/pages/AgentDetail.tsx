@@ -1,5 +1,5 @@
 import { createMemo, For, Show, type Component } from "solid-js";
-import { A, useParams } from "@solidjs/router";
+import { A, useNavigate, useParams } from "@solidjs/router";
 import type { AgentCli, McpServerSpec } from "senda-shared-types";
 
 import { catalog as entries } from "../stores/catalog";
@@ -27,6 +27,7 @@ function maskValue(value: string): string {
 
 const AgentDetail: Component = () => {
   const params = useParams();
+  const navigate = useNavigate();
 
   const targetEntry = createMemo(() => {
     const id = decodeURIComponent(params.id ?? "");
@@ -91,7 +92,11 @@ const AgentDetail: Component = () => {
               <p class="muted small">{sourceLabel()}</p>
             </div>
             <div class="agent-detail-actions">
-              <button class="btn-primary" disabled>
+              <button
+                class="btn-primary"
+                onClick={() => navigate(`/agent/run/${encodeURIComponent(targetEntry()!.id)}`)}
+                disabled={agent()!.targets.length === 0}
+              >
                 Run agent
               </button>
               <button class="btn-secondary" disabled={isExternal()}>

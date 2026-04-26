@@ -5,6 +5,9 @@ import { Router, Route } from "@solidjs/router";
 import App from "./App";
 import Catalog from "./pages/Catalog";
 import AgentDetail from "./pages/AgentDetail";
+import AgentRunner from "./pages/AgentRunner";
+import Settings from "./pages/Settings";
+import History from "./pages/History";
 
 import "./styles.css";
 
@@ -17,7 +20,10 @@ render(
   () => (
     <Router root={App}>
       <Route path="/" component={Catalog} />
+      <Route path="/agent/run/*id" component={AgentRunner} />
       <Route path="/agent/*id" component={AgentDetail} />
+      <Route path="/history" component={History} />
+      <Route path="/settings" component={Settings} />
     </Router>
   ),
   root,

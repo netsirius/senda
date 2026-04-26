@@ -85,11 +85,12 @@ impl Db {
                 trigger_kind        TEXT NOT NULL,
                 trigger_config      TEXT NOT NULL,
                 guards              TEXT NOT NULL,
-                prompt_template     TEXT,
-                variables_json      TEXT,
-                include_last_output INTEGER NOT NULL DEFAULT 0,
-                chain_json          TEXT,
-                enabled             INTEGER NOT NULL DEFAULT 1,
+                prompt_template      TEXT,
+                variables_json       TEXT,
+                include_last_output  INTEGER NOT NULL DEFAULT 0,
+                chain_json           TEXT,
+                output_webhooks_json TEXT,
+                enabled              INTEGER NOT NULL DEFAULT 1,
                 created_at          INTEGER NOT NULL,
                 last_run_at         INTEGER,
                 last_run_status     TEXT,
@@ -152,6 +153,10 @@ impl Db {
             [],
         );
         let _ = conn.execute("ALTER TABLE automations ADD COLUMN chain_json TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE automations ADD COLUMN output_webhooks_json TEXT",
+            [],
+        );
         Ok(())
     }
 
@@ -228,8 +233,8 @@ impl Db {
     pub fn insert_automation(&self, row: &NewAutomationRow<'_>) -> Result<i64, DbError> {
         let conn = self.0.lock();
         conn.execute(
-            "INSERT INTO automations (name, agent_id, trigger_kind, trigger_config, guards, prompt_template, variables_json, include_last_output, chain_json, enabled, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO automations (name, agent_id, trigger_kind, trigger_config, guards, prompt_template, variables_json, include_last_output, chain_json, output_webhooks_json, enabled, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 row.name,
                 row.agent_id,
@@ -240,6 +245,7 @@ impl Db {
                 row.variables_json,
                 row.include_last_output as i64,
                 row.chain_json,
+                row.output_webhooks_json,
                 row.enabled as i64,
                 row.created_at,
             ],
@@ -250,7 +256,7 @@ impl Db {
     pub fn list_automations(&self) -> Result<Vec<AutomationRow>, DbError> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, name, agent_id, trigger_kind, trigger_config, guards, prompt_template, variables_json, include_last_output, chain_json, enabled, created_at, last_run_at, last_run_status \
+            "SELECT id, name, agent_id, trigger_kind, trigger_config, guards, prompt_template, variables_json, include_last_output, chain_json, output_webhooks_json, enabled, created_at, last_run_at, last_run_status \
              FROM automations ORDER BY created_at",
         )?;
         let rows = stmt
@@ -266,10 +272,11 @@ impl Db {
                     variables_json: row.get(7)?,
                     include_last_output: row.get::<_, i64>(8)? != 0,
                     chain_json: row.get(9)?,
-                    enabled: row.get::<_, i64>(10)? != 0,
-                    created_at: row.get(11)?,
-                    last_run_at: row.get(12)?,
-                    last_run_status: row.get(13)?,
+                    output_webhooks_json: row.get(10)?,
+                    enabled: row.get::<_, i64>(11)? != 0,
+                    created_at: row.get(12)?,
+                    last_run_at: row.get(13)?,
+                    last_run_status: row.get(14)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -604,6 +611,7 @@ pub struct NewAutomationRow<'a> {
     pub variables_json: Option<&'a str>,
     pub include_last_output: bool,
     pub chain_json: Option<&'a str>,
+    pub output_webhooks_json: Option<&'a str>,
     pub enabled: bool,
     pub created_at: i64,
 }
@@ -621,6 +629,7 @@ pub struct AutomationRow {
     pub variables_json: Option<String>,
     pub include_last_output: bool,
     pub chain_json: Option<String>,
+    pub output_webhooks_json: Option<String>,
     pub enabled: bool,
     pub created_at: i64,
     pub last_run_at: Option<i64>,

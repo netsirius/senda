@@ -48,6 +48,31 @@ impl Default for Guards {
     }
 }
 
+/// Where to POST the result of a successful (or failed) run. Senda
+/// auto-detects the payload shape from the URL host:
+/// - teams.microsoft.com / *.webhook.office.com → Adaptive Card
+/// - hooks.slack.com → `{ "text": ... }` mrkdwn
+/// - discord.com/api/webhooks → `{ "content": ... }`
+/// - everything else → raw JSON `{ automationId, runId, status, output, error }`
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputWebhook {
+    pub url: String,
+    /// Optional override; defaults to `auto` (URL host detection).
+    #[serde(default = "default_format")]
+    pub format: String,
+    /// Send only on failure / only on success / always. Default: always.
+    #[serde(default = "default_when")]
+    pub when: String,
+}
+
+fn default_format() -> String {
+    "auto".to_string()
+}
+fn default_when() -> String {
+    "always".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Automation {
@@ -81,6 +106,11 @@ pub struct Automation {
     /// (so `{event}` resolves to the prior agent's stdout).
     #[serde(default)]
     pub chain: Vec<String>,
+    /// HTTP endpoints that get a POST with the run's outcome after each
+    /// successful (or failed, depending on `when`) firing. Useful for
+    /// pinging Teams, Slack, Discord, or your own service.
+    #[serde(default)]
+    pub output_webhooks: Vec<OutputWebhook>,
     pub last_run_at: Option<i64>,
     pub last_run_status: Option<String>,
     pub next_run_at: Option<i64>,

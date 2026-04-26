@@ -11,6 +11,7 @@ mod commands;
 mod db;
 mod mcp_client;
 mod mcp_watcher;
+mod output_webhooks;
 mod scheduler_host;
 mod secrets;
 mod sync;

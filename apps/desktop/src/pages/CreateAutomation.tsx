@@ -24,6 +24,9 @@ const CreateAutomation: Component = () => {
   const [variablesText, setVariablesText] = createSignal("");
   const [includeLastOutput, setIncludeLastOutput] = createSignal(false);
   const [chainAgentIds, setChainAgentIds] = createSignal<string[]>([]);
+  const [outputWebhooks, setOutputWebhooks] = createSignal<
+    Array<{ url: string; format: string; when: string }>
+  >([]);
   const [idempotency, setIdempotency] = createSignal(true);
   const [rateLimit, setRateLimit] = createSignal(100);
   const [approvalGate, setApprovalGate] = createSignal(false);
@@ -134,6 +137,7 @@ ${a.body}`;
         variables,
         includeLastOutput: includeLastOutput(),
         chain,
+        outputWebhooks: outputWebhooks().filter((w) => w.url.trim().length > 0),
         enabled: true,
       };
       console.log("[senda] create_automation", args);
@@ -525,6 +529,80 @@ ${a.body}`;
               Approval gate
             </label>
           </div>
+
+          <h3 style="margin-top:16px">Output webhooks (Teams / Slack / Discord / custom)</h3>
+          <p class="muted small">
+            POST el resultado de cada run a un endpoint. Senda detecta el formato por host:
+            <code>webhook.office.com</code> = Teams Adaptive Card,{" "}
+            <code>hooks.slack.com</code> = Slack mrkdwn, <code>discord.com/api/webhooks</code> =
+            Discord, todo lo demás = JSON crudo.
+          </p>
+          <For each={outputWebhooks()}>
+            {(hook, idx) => (
+              <div class="webhook-row">
+                <input
+                  type="url"
+                  placeholder="https://acme.webhook.office.com/..."
+                  value={hook.url}
+                  onInput={(e) => {
+                    const next = [...outputWebhooks()];
+                    next[idx()] = { ...next[idx()], url: e.currentTarget.value };
+                    setOutputWebhooks(next);
+                  }}
+                />
+                <select
+                  value={hook.when}
+                  onChange={(e) => {
+                    const next = [...outputWebhooks()];
+                    next[idx()] = { ...next[idx()], when: e.currentTarget.value };
+                    setOutputWebhooks(next);
+                  }}
+                  title="When to fire this webhook"
+                >
+                  <option value="always">always</option>
+                  <option value="success">on success</option>
+                  <option value="failure">on failure</option>
+                </select>
+                <select
+                  value={hook.format}
+                  onChange={(e) => {
+                    const next = [...outputWebhooks()];
+                    next[idx()] = { ...next[idx()], format: e.currentTarget.value };
+                    setOutputWebhooks(next);
+                  }}
+                  title="Payload format (auto-detects from URL)"
+                >
+                  <option value="auto">auto</option>
+                  <option value="teams">teams</option>
+                  <option value="slack">slack</option>
+                  <option value="discord">discord</option>
+                  <option value="raw">raw json</option>
+                </select>
+                <button
+                  type="button"
+                  class="btn-danger small"
+                  onClick={() =>
+                    setOutputWebhooks(outputWebhooks().filter((_, i) => i !== idx()))
+                  }
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </For>
+          <button
+            type="button"
+            class="btn-secondary small"
+            onClick={() =>
+              setOutputWebhooks([
+                ...outputWebhooks(),
+                { url: "", format: "auto", when: "always" },
+              ])
+            }
+          >
+            + Add output webhook
+          </button>
+
           <div class="step-actions">
             <button class="btn-secondary" onClick={() => setStep("prompt")}>
               Back

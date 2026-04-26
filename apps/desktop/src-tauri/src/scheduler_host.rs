@@ -69,6 +69,35 @@ impl Store for SqliteStore {
     async fn last_successful_output(&self, automation_id: i64) -> Option<String> {
         self.db.last_successful_output(automation_id).ok().flatten()
     }
+    async fn notify_completion(&self, automation_id: i64, run_id: i64, outcome: &RunOutcome) {
+        // Look up the automation row to retrieve its configured output
+        // webhooks. Errors are swallowed — notifications must never block
+        // the run accounting.
+        let Ok(rows) = self.db.list_automations() else {
+            return;
+        };
+        let Some(row) = rows.into_iter().find(|r| r.id == automation_id) else {
+            return;
+        };
+        let webhooks: Vec<senda_core::OutputWebhook> = row
+            .output_webhooks_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        if webhooks.is_empty() {
+            return;
+        }
+        let summary = crate::output_webhooks::RunSummary {
+            automation_id,
+            automation_name: row.name,
+            agent_id: row.agent_id,
+            run_id,
+            success: outcome.success,
+            output: outcome.output.clone().unwrap_or_default(),
+            error: outcome.error.clone(),
+        };
+        crate::output_webhooks::dispatch(&webhooks, &summary).await;
+    }
 }
 
 /// Production runner: resolves the agent from the catalog, spawns the
@@ -183,6 +212,14 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
     } else {
         Some(serde_json::to_string(&automation.chain).map_err(|e| format!("encode chain: {e}"))?)
     };
+    let output_webhooks_json = if automation.output_webhooks.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::to_string(&automation.output_webhooks)
+                .map_err(|e| format!("encode output webhooks: {e}"))?,
+        )
+    };
     db.insert_automation(&NewAutomationRow {
         name: &automation.name,
         agent_id: &automation.agent_id,
@@ -193,6 +230,7 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
         variables_json: variables_json.as_deref(),
         include_last_output: automation.include_last_output,
         chain_json: chain_json.as_deref(),
+        output_webhooks_json: output_webhooks_json.as_deref(),
         enabled: automation.enabled,
         created_at: unix_now(),
     })
@@ -212,6 +250,11 @@ pub fn automation_from_row(row: &crate::db::AutomationRow) -> Option<Automation>
         .as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
+    let output_webhooks = row
+        .output_webhooks_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
     Some(Automation {
         id: row.id,
         name: row.name.clone(),
@@ -222,6 +265,7 @@ pub fn automation_from_row(row: &crate::db::AutomationRow) -> Option<Automation>
         variables,
         include_last_output: row.include_last_output,
         chain,
+        output_webhooks,
         enabled: row.enabled,
         last_run_at: row.last_run_at,
         last_run_status: row.last_run_status.clone(),

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use senda_core::{Automation, Guards, Trigger};
+use senda_core::{Automation, Guards, OutputWebhook, Trigger};
 use senda_scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -29,6 +29,8 @@ pub struct CreateAutomationArgs {
     pub include_last_output: bool,
     #[serde(default)]
     pub chain: Vec<String>,
+    #[serde(default)]
+    pub output_webhooks: Vec<OutputWebhook>,
     #[serde(default = "yes")]
     pub enabled: bool,
 }
@@ -59,6 +61,7 @@ pub async fn create_automation(
         variables: args.variables,
         include_last_output: args.include_last_output,
         chain: args.chain,
+        output_webhooks: args.output_webhooks,
         enabled: args.enabled,
         last_run_at: None,
         last_run_status: None,

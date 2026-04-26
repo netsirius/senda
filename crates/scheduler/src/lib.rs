@@ -98,6 +98,10 @@ pub trait Store: Send + Sync + 'static {
     async fn last_successful_output(&self, _automation_id: i64) -> Option<String> {
         None
     }
+    /// Called once per *firing* (after the chain has fully resolved) with
+    /// the final outcome. Hosts implement this to dispatch user-configured
+    /// notifications (Teams, Slack, custom webhooks). Default: no-op.
+    async fn notify_completion(&self, _automation_id: i64, _run_id: i64, _outcome: &RunOutcome) {}
 }
 
 pub struct Scheduler {
@@ -448,6 +452,12 @@ async fn fire(
     if last_outcome.success && automation.guards.idempotency {
         store.mark_processed(automation.id, &event_id).await;
     }
+
+    // Final notification — webhooks (Teams / Slack / Discord / raw). The
+    // store knows how to dispatch; the scheduler stays HTTP-free.
+    store
+        .notify_completion(automation.id, run_id, &last_outcome)
+        .await;
 }
 
 async fn build_prompt(
@@ -551,6 +561,7 @@ mod tests {
             variables: Default::default(),
             include_last_output: false,
             chain: Vec::new(),
+            output_webhooks: Vec::new(),
             enabled: true,
             last_run_at: None,
             last_run_status: None,

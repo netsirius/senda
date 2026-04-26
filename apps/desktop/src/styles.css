@@ -1178,3 +1178,11 @@ code {
   font-size: 10px;
   text-align: center;
 }
+
+.webhook-row {
+  display: grid;
+  grid-template-columns: 1fr 130px 130px auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}

@@ -46,6 +46,7 @@ whoami = "1"
 notify = "7"
 cron = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
+which = "7"
 
 [dev-dependencies]
 tempfile = "3"

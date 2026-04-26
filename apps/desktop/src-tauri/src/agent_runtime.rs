@@ -9,12 +9,30 @@
 use std::path::Path;
 use std::time::Duration;
 
+use senda_acp_client::{spawn_agent, SessionUpdate};
 use senda_agent_parser::{parse_canonical, parse_native};
 use senda_core::{AgentCli, AgentSource, CatalogEntry};
 use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::db::Db;
+
+/// Probe for an ACP-capable wrapper for the given CLI. Returns the binary
+/// name to spawn, or `None` if not available — caller falls back to plain
+/// subprocess. The names follow community conventions; a future Settings
+/// override can replace these.
+fn acp_binary_for(cli: AgentCli) -> Option<&'static str> {
+    let candidate = match cli {
+        AgentCli::ClaudeCode => "claude-code-acp",
+        AgentCli::Gemini => "gemini-acp",
+        AgentCli::Copilot => return None, // Copilot doesn't ship an ACP server.
+    };
+    if which::which(candidate).is_ok() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
 
 /// Build the (program, args) pair that spawns a given agent on a given CLI.
 /// Mirrors the layout used by [`crate::commands::execution::build_command`].
@@ -56,6 +74,11 @@ pub struct AutomationRun {
 /// Spawn an agent without a PTY, capture its combined output, and wait up to
 /// `wall_clock` for it to exit. Used by the scheduler — the user-facing
 /// runner uses PTY streaming instead.
+///
+/// For Claude Code / Gemini, this prefers `claude-code-acp` /
+/// `gemini-acp` when present in `$PATH` and talks the Agent Client
+/// Protocol — output is the concatenation of every `agentMessage`
+/// update. Falls back to plain subprocess if the ACP binary is missing.
 pub async fn spawn_for_automation(
     cli: AgentCli,
     agent_name: &str,
@@ -63,6 +86,10 @@ pub async fn spawn_for_automation(
     dry_run: bool,
     wall_clock: Duration,
 ) -> AutomationRun {
+    if let Some(acp_bin) = acp_binary_for(cli) {
+        return spawn_via_acp(acp_bin, agent_name, prompt, dry_run, wall_clock).await;
+    }
+
     let (program, args) = argv(cli, agent_name, prompt);
     let mut cmd = Command::new(program);
     cmd.args(&args);
@@ -98,6 +125,79 @@ pub async fn spawn_for_automation(
             output: String::new(),
             error: Some(format!("timeout after {}s", wall_clock.as_secs())),
         },
+    }
+}
+
+async fn spawn_via_acp(
+    binary: &str,
+    _agent_name: &str,
+    prompt: &str,
+    dry_run: bool,
+    wall_clock: Duration,
+) -> AutomationRun {
+    // ACP doesn't carry a `dry_run` concept — agents that opt-in honour the
+    // SENDA_DRY_RUN env, but the protocol itself can't tell the agent. We
+    // export the env var via the spawned child's environment for parity
+    // with the subprocess path, even though ACP doesn't surface it.
+    if dry_run {
+        std::env::set_var("SENDA_DRY_RUN", "1");
+    }
+
+    let session = match spawn_agent(binary, &[]).await {
+        Ok(s) => s,
+        Err(e) => {
+            return AutomationRun {
+                success: false,
+                exit_code: None,
+                output: String::new(),
+                error: Some(format!("ACP spawn `{binary}`: {e}")),
+            };
+        }
+    };
+
+    let result: Result<AutomationRun, AutomationRun> = timeout(wall_clock, async {
+        let session_id = session
+            .new_session()
+            .await
+            .map_err(|e| acp_failure(format!("session/new: {e}")))?;
+        let mut updates = session
+            .prompt(&session_id, prompt)
+            .await
+            .map_err(|e| acp_failure(format!("session/prompt: {e}")))?;
+        let mut buf = String::new();
+        while let Some(update) = updates.recv().await {
+            match update {
+                SessionUpdate::AgentMessage { content } => buf.push_str(&content),
+                SessionUpdate::Done => break,
+                _ => {}
+            }
+        }
+        Ok(AutomationRun {
+            success: true,
+            exit_code: Some(0),
+            output: buf,
+            error: None,
+        })
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err(acp_failure(format!(
+            "ACP timeout after {}s",
+            wall_clock.as_secs()
+        )))
+    });
+
+    match result {
+        Ok(r) | Err(r) => r,
+    }
+}
+
+fn acp_failure(message: String) -> AutomationRun {
+    AutomationRun {
+        success: false,
+        exit_code: None,
+        output: String::new(),
+        error: Some(message),
     }
 }
 

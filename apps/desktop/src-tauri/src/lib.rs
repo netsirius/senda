@@ -1,15 +1,19 @@
 //! Tauri shell entrypoint.
 //!
-//! Phase 0 wired only a smoke-test command. Phase 1 adds catalog reading,
-//! agent execution and a SQLite-backed history. Tauri state holds the DB
-//! handle and the in-flight executions registry.
+//! Phase 0 wired only a smoke-test command. Phase 1 added catalog reading,
+//! agent execution and SQLite history. Phase 2 plugs in connected repos
+//! (clone, list, sync, disconnect) and the GitHub Device Flow.
 
 mod commands;
 mod db;
+mod secrets;
+mod sync;
 
 use commands::agents::read_catalog;
 use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
 use commands::greeting::hello_world;
+use commands::oauth::{github_device_authorize, github_device_poll};
+use commands::repos::{add_repo, disconnect_repo, list_repos, sync_repo};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,7 +29,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(db)
+        .manage(db.clone())
         .manage(executions)
         .invoke_handler(tauri::generate_handler![
             hello_world,
@@ -33,9 +37,16 @@ pub fn run() {
             run_agent,
             cancel_execution,
             list_executions,
+            add_repo,
+            list_repos,
+            disconnect_repo,
+            sync_repo,
+            github_device_authorize,
+            github_device_poll,
         ])
-        .setup(|_app| {
+        .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");
+            sync::spawn_background_sync(app.handle().clone(), db.clone());
             Ok(())
         })
         .run(tauri::generate_context!())

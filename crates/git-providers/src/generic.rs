@@ -5,8 +5,8 @@ use url::Url;
 use senda_core::RepoProviderKind;
 
 use crate::{
-    Auth, Branch, GenericProvider, PrInfo, PrRequest, ProviderError, PullResult, RepoIdentity,
-    RepoProvider,
+    git_ops, Auth, Branch, GenericProvider, PrInfo, PrRequest, ProviderError, PullResult,
+    RepoIdentity, RepoProvider,
 };
 
 #[async_trait]
@@ -15,8 +15,8 @@ impl RepoProvider for GenericProvider {
         "generic"
     }
 
-    /// Generic git has no standard PR API, so [`PublishFlow`] degrades to a
-    /// "push the branch and open the PR yourself" message.
+    /// Generic Git has no standard PR API. The publish flow degrades to
+    /// "push the branch and open the PR yourself" when this returns false.
     fn supports_pr_creation(&self) -> bool {
         false
     }
@@ -51,19 +51,32 @@ impl RepoProvider for GenericProvider {
 
     async fn clone(
         &self,
-        _identity: &RepoIdentity,
-        _dest: &Path,
-        _auth: &Auth,
+        identity: &RepoIdentity,
+        dest: &Path,
+        auth: &Auth,
     ) -> Result<PathBuf, ProviderError> {
-        Err(ProviderError::NotImplemented)
+        let url = identity.url.clone();
+        let dest = dest.to_path_buf();
+        let auth = auth.clone();
+        tokio::task::spawn_blocking(move || git_ops::clone_repo(&url, &dest, auth))
+            .await
+            .map_err(|e| ProviderError::Other(e.into()))?
     }
 
-    async fn pull(&self, _repo: &Path) -> Result<PullResult, ProviderError> {
-        Err(ProviderError::NotImplemented)
+    async fn pull(&self, repo: &Path) -> Result<PullResult, ProviderError> {
+        let repo = repo.to_path_buf();
+        tokio::task::spawn_blocking(move || git_ops::pull_repo(&repo, Auth::None))
+            .await
+            .map_err(|e| ProviderError::Other(e.into()))?
     }
 
-    async fn push(&self, _repo: &Path, _branch: &str, _auth: &Auth) -> Result<(), ProviderError> {
-        Err(ProviderError::NotImplemented)
+    async fn push(&self, repo: &Path, branch: &str, auth: &Auth) -> Result<(), ProviderError> {
+        let repo = repo.to_path_buf();
+        let branch = branch.to_string();
+        let auth = auth.clone();
+        tokio::task::spawn_blocking(move || git_ops::push_repo(&repo, &branch, auth))
+            .await
+            .map_err(|e| ProviderError::Other(e.into()))?
     }
 
     async fn create_pr(
@@ -75,8 +88,11 @@ impl RepoProvider for GenericProvider {
         Err(ProviderError::Unsupported)
     }
 
-    async fn list_branches(&self, _repo: &Path) -> Result<Vec<Branch>, ProviderError> {
-        Err(ProviderError::NotImplemented)
+    async fn list_branches(&self, repo: &Path) -> Result<Vec<Branch>, ProviderError> {
+        let repo = repo.to_path_buf();
+        tokio::task::spawn_blocking(move || git_ops::list_local_branches(&repo))
+            .await
+            .map_err(|e| ProviderError::Other(e.into()))?
     }
 }
 
@@ -86,8 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn extracts_repo_from_gitlab_url() {
-        let provider = GenericProvider;
-        let identity = provider
+        let identity = GenericProvider
             .parse_url("https://gitlab.com/team/agents")
             .await
             .unwrap();

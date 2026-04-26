@@ -1,5 +1,6 @@
-import type { Component } from "solid-js";
+import { For, Show, type Component } from "solid-js";
 import { A, useLocation } from "@solidjs/router";
+import { repos } from "../stores/repos";
 
 const Sidebar: Component = () => {
   const location = useLocation();
@@ -21,11 +22,36 @@ const Sidebar: Component = () => {
           History
         </A>
 
-        <span class="nav-section">CONNECTED REPOS</span>
-        <span class="nav-empty">No repositories yet.</span>
+        <div class="nav-section-row">
+          <span class="nav-section">CONNECTED REPOS</span>
+          <A class="nav-section-action" href="/repos/add" title="Add repository">
+            +
+          </A>
+        </div>
+        <Show
+          when={(repos() ?? []).length > 0}
+          fallback={<span class="nav-empty">No repositories yet.</span>}
+        >
+          <For each={repos()}>
+            {(repo) => (
+              <A class="nav-link nav-link-repo" href={`/repos/${repo.id}`}>
+                <span
+                  class="repo-dot"
+                  classList={{
+                    "repo-dot--ok": !repo.lastSyncError,
+                    "repo-dot--err": !!repo.lastSyncError,
+                  }}
+                />
+                <span class="repo-label">{repo.repo}</span>
+              </A>
+            )}
+          </For>
+        </Show>
 
         <span class="nav-section">AUTOMATIONS</span>
-        <span class="nav-empty">Phase 3.</span>
+        <A class="nav-link" classList={{ active: isActive("/automations") }} href="/automations">
+          Scheduler
+        </A>
 
         <div class="sidebar-grow" />
 

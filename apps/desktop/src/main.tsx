@@ -8,6 +8,8 @@ import AgentDetail from "./pages/AgentDetail";
 import AgentRunner from "./pages/AgentRunner";
 import Settings from "./pages/Settings";
 import History from "./pages/History";
+import AddRepository from "./pages/AddRepository";
+import RepoDetail from "./pages/RepoDetail";
 
 import "./styles.css";
 
@@ -24,6 +26,8 @@ render(
       <Route path="/agent/*id" component={AgentDetail} />
       <Route path="/history" component={History} />
       <Route path="/settings" component={Settings} />
+      <Route path="/repos/add" component={AddRepository} />
+      <Route path="/repos/:id" component={RepoDetail} />
     </Router>
   ),
   root,

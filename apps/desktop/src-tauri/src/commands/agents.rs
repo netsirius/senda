@@ -9,7 +9,9 @@ use senda_agent_parser::{parse_canonical, parse_native, ParseError};
 use senda_core::{Agent, AgentCli, AgentSource, CanonicalAgent, CatalogEntry};
 
 #[tauri::command]
-pub async fn read_catalog() -> Result<Vec<CatalogEntry>, String> {
+pub async fn read_catalog(
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<CatalogEntry>, String> {
     let home = dirs::home_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
     let mut entries = Vec::new();
 
@@ -27,6 +29,17 @@ pub async fn read_catalog() -> Result<Vec<CatalogEntry>, String> {
             continue;
         }
         scan_native_dir(&dir, cli, &mut entries);
+    }
+
+    // Connected repos — scan their `agents/` subdirectory and badge each
+    // result with the originating repo id.
+    let repos = db.list_repos().map_err(|e| format!("db: {e}"))?;
+    for repo in repos {
+        let agents_dir = std::path::Path::new(&repo.local_path).join("agents");
+        if !agents_dir.is_dir() {
+            continue;
+        }
+        scan_repo_dir(&agents_dir, repo.id, &repo.repo, &mut entries);
     }
 
     tracing::info!(found = entries.len(), "read_catalog complete");
@@ -107,6 +120,51 @@ fn scan_native_dir(dir: &Path, cli: AgentCli, out: &mut Vec<CatalogEntry>) {
                 id,
                 path: path.to_string_lossy().to_string(),
                 source: AgentSource::External { original_cli: cli },
+                message: err.to_string(),
+            }),
+        }
+    }
+}
+
+fn scan_repo_dir(dir: &Path, repo_id: i64, repo_name: &str, out: &mut Vec<CatalogEntry>) {
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(err) => {
+            tracing::warn!(?err, ?dir, "cannot read repo agents dir");
+            return;
+        }
+    };
+
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !path_has_canonical_ext(&path) {
+            continue;
+        }
+        let bare = id_from_path(&path);
+        let id = format!("{repo_name}/{bare}");
+        let source = AgentSource::Repo {
+            repo_id,
+            path: path.to_string_lossy().to_string(),
+        };
+        match std::fs::read_to_string(&path).map_err(io_to_parse) {
+            Ok(raw) => match parse_canonical(&raw) {
+                Ok(canonical) => out.push(CatalogEntry::Agent(Box::new(make_agent(
+                    id,
+                    canonical,
+                    source,
+                    Some(path.to_string_lossy().to_string()),
+                )))),
+                Err(err) => out.push(CatalogEntry::Error {
+                    id,
+                    path: path.to_string_lossy().to_string(),
+                    source,
+                    message: err.to_string(),
+                }),
+            },
+            Err(err) => out.push(CatalogEntry::Error {
+                id,
+                path: path.to_string_lossy().to_string(),
+                source,
                 message: err.to_string(),
             }),
         }

@@ -12,7 +12,7 @@ use url::Url;
 
 pub use senda_core::{RepoIdentity, RepoProviderKind};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Auth {
     None,
     PersonalAccessToken(String),
@@ -113,7 +113,9 @@ pub fn detect_provider(url: &str) -> Box<dyn RepoProvider> {
 
 mod azure;
 mod generic;
+mod git_ops;
 mod github;
+mod http;
 
 #[cfg(test)]
 mod tests {

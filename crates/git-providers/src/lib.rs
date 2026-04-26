@@ -117,6 +117,8 @@ mod git_ops;
 mod github;
 mod http;
 
+pub use git_ops::commit_and_push;
+
 #[cfg(test)]
 mod tests {
     use super::*;

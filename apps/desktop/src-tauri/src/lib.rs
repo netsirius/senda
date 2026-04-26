@@ -20,6 +20,7 @@ use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent}
 use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
 use commands::greeting::hello_world;
 use commands::oauth::{github_device_authorize, github_device_poll};
+use commands::publish::publish_agent;
 use commands::repos::{add_repo, disconnect_repo, list_repos, sync_repo};
 use tauri::Manager;
 
@@ -61,6 +62,7 @@ pub fn run() {
             delete_agent,
             list_drafts,
             read_agent_source,
+            publish_agent,
         ])
         .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");

@@ -41,6 +41,7 @@ hex = "0.4"
 uuid = { version = "1", features = ["v4", "serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 parking_lot = "0.12"
+whoami = "1"
 
 [dev-dependencies]
 tempfile = "3"

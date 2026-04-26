@@ -119,6 +119,75 @@ pub fn push_repo(repo_path: &Path, branch: &str, auth: Auth) -> Result<(), Provi
     Ok(())
 }
 
+/// Create a branch from `base_branch`, write the supplied files, stage them,
+/// commit, and push to origin. Used by the publish flow to land a draft as a
+/// PR-ready branch in one shot.
+pub fn commit_and_push(
+    repo_path: &Path,
+    base_branch: &str,
+    new_branch: &str,
+    files: &[(String, String)],
+    commit_message: &str,
+    author: &(String, String),
+    auth: Auth,
+) -> Result<String, ProviderError> {
+    use git2::{IndexAddOption, ObjectType, Signature};
+
+    let repo = git2::Repository::open(repo_path).map_err(map_git_err)?;
+    // Check out base, create the new branch from it.
+    let base_ref = repo
+        .find_branch(base_branch, BranchType::Local)
+        .map_err(map_git_err)?;
+    let base_commit = base_ref.get().peel_to_commit().map_err(map_git_err)?;
+    let _branch = repo
+        .branch(new_branch, &base_commit, true)
+        .map_err(map_git_err)?;
+    repo.set_head(&format!("refs/heads/{new_branch}"))
+        .map_err(map_git_err)?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .map_err(map_git_err)?;
+
+    // Write files.
+    for (rel_path, contents) in files {
+        let full = repo_path.join(rel_path);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| ProviderError::Other(e.into()))?;
+        }
+        std::fs::write(&full, contents).map_err(|e| ProviderError::Other(e.into()))?;
+    }
+
+    // Stage + commit.
+    let mut index = repo.index().map_err(map_git_err)?;
+    index
+        .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+        .map_err(map_git_err)?;
+    index.write().map_err(map_git_err)?;
+    let tree_oid = index.write_tree().map_err(map_git_err)?;
+    let tree = repo
+        .find_object(tree_oid, Some(ObjectType::Tree))
+        .and_then(|o| o.peel_to_tree())
+        .map_err(map_git_err)?;
+    let parent_commit = repo
+        .head()
+        .map_err(map_git_err)?
+        .peel_to_commit()
+        .map_err(map_git_err)?;
+    let signature = Signature::now(&author.0, &author.1).map_err(map_git_err)?;
+    let _commit = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            commit_message,
+            &tree,
+            &[&parent_commit],
+        )
+        .map_err(map_git_err)?;
+
+    push_repo(repo_path, new_branch, auth)?;
+    Ok(new_branch.to_string())
+}
+
 pub fn list_local_branches(repo_path: &Path) -> Result<Vec<Branch>, ProviderError> {
     let repo = git2::Repository::open(repo_path).map_err(map_git_err)?;
     let head_branch = repo

@@ -164,6 +164,7 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
         trigger_kind: &trigger_kind,
         trigger_config: &trigger_config,
         guards: &guards,
+        prompt_template: automation.prompt_template.as_deref(),
         enabled: automation.enabled,
         created_at: unix_now(),
     })
@@ -179,6 +180,7 @@ pub fn automation_from_row(row: &crate::db::AutomationRow) -> Option<Automation>
         agent_id: row.agent_id.clone(),
         trigger,
         guards,
+        prompt_template: row.prompt_template.clone(),
         enabled: row.enabled,
         last_run_at: row.last_run_at,
         last_run_status: row.last_run_status.clone(),

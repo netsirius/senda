@@ -7,7 +7,9 @@ type TriggerKind = "schedule" | "event" | "webhook" | "manual";
 
 const CreateAutomation: Component = () => {
   const navigate = useNavigate();
-  const [step, setStep] = createSignal<"agent" | "trigger" | "guards" | "review">("agent");
+  const [step, setStep] = createSignal<"agent" | "trigger" | "prompt" | "guards" | "review">(
+    "agent",
+  );
   const [name, setName] = createSignal("my-automation");
   const [agentId, setAgentId] = createSignal("");
   const [triggerKind, setTriggerKind] = createSignal<TriggerKind>("manual");
@@ -15,6 +17,9 @@ const CreateAutomation: Component = () => {
   const [timezone, setTimezone] = createSignal("UTC");
   const [webhookPath, setWebhookPath] = createSignal("hello");
   const [webhookSecret, setWebhookSecret] = createSignal("");
+  const [mcpName, setMcpName] = createSignal("");
+  const [pollInterval, setPollInterval] = createSignal(60);
+  const [promptTemplate, setPromptTemplate] = createSignal("");
   const [idempotency, setIdempotency] = createSignal(true);
   const [rateLimit, setRateLimit] = createSignal(100);
   const [approvalGate, setApprovalGate] = createSignal(false);
@@ -38,9 +43,9 @@ const CreateAutomation: Component = () => {
       case "event":
         return {
           kind: "event",
-          mcp: "stub",
+          mcp: mcpName(),
           eventFilter: {},
-          pollIntervalSeconds: 60,
+          pollIntervalSeconds: pollInterval(),
         };
       case "manual":
       default:
@@ -63,6 +68,7 @@ const CreateAutomation: Component = () => {
             approvalGate: approvalGate(),
             backpressure: "skip",
           },
+          promptTemplate: promptTemplate().trim() ? promptTemplate() : null,
           enabled: true,
         },
       });
@@ -86,13 +92,21 @@ const CreateAutomation: Component = () => {
         <li
           classList={{
             active: step() === "trigger",
-            done: step() === "guards" || step() === "review",
+            done: step() === "prompt" || step() === "guards" || step() === "review",
           }}
         >
           2. Trigger
         </li>
-        <li classList={{ active: step() === "guards", done: step() === "review" }}>3. Guards</li>
-        <li classList={{ active: step() === "review" }}>4. Review</li>
+        <li
+          classList={{
+            active: step() === "prompt",
+            done: step() === "guards" || step() === "review",
+          }}
+        >
+          3. Prompt
+        </li>
+        <li classList={{ active: step() === "guards", done: step() === "review" }}>4. Guards</li>
+        <li classList={{ active: step() === "review" }}>5. Review</li>
       </ol>
 
       <Show when={step() === "agent"}>
@@ -129,7 +143,7 @@ const CreateAutomation: Component = () => {
       <Show when={step() === "trigger"}>
         <section class="detail-block">
           <div class="provider-grid">
-            <For each={["schedule", "webhook", "manual"] as TriggerKind[]}>
+            <For each={["schedule", "webhook", "event", "manual"] as TriggerKind[]}>
               {(t) => (
                 <button
                   class="provider-card"
@@ -142,7 +156,9 @@ const CreateAutomation: Component = () => {
                       ? "Cron expression with timezone."
                       : t === "webhook"
                         ? "POST hits to localhost:9876/hook/<path>."
-                        : "Run manually from the UI."}
+                        : t === "event"
+                          ? "Poll an MCP server every N seconds for new items."
+                          : "Run manually from the UI."}
                   </p>
                 </button>
               )}
@@ -151,9 +167,30 @@ const CreateAutomation: Component = () => {
 
           <Show when={triggerKind() === "schedule"}>
             <div class="settings-row">
+              <label>Quick presets</label>
+              <div class="chip-row">
+                <For
+                  each={[
+                    ["* * * * *", "every minute"],
+                    ["*/10 * * * *", "every 10 min"],
+                    ["0 * * * *", "hourly"],
+                    ["0 9 * * 1-5", "9am weekdays"],
+                    ["0 9 * * 1", "Monday 9am"],
+                    ["0 0 * * *", "daily midnight"],
+                  ]}
+                >
+                  {([expr, label]) => (
+                    <button class="chip" onClick={() => setCronExpr(expr)}>
+                      {label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+            <div class="settings-row">
               <label>Cron</label>
               <input value={cronExpr()} onInput={(e) => setCronExpr(e.currentTarget.value)} />
-              <p class="muted small">Example: <code>0 9 * * 1</code> = every Monday at 09:00.</p>
+              <p class="muted small">Standard 5-field cron. Live: <code>{cronExpr()}</code></p>
             </div>
             <div class="settings-row">
               <label>Timezone</label>
@@ -165,9 +202,19 @@ const CreateAutomation: Component = () => {
             <div class="settings-row">
               <label>Path segment</label>
               <input value={webhookPath()} onInput={(e) => setWebhookPath(e.currentTarget.value)} />
-              <p class="muted small">
-                Webhook URL: <code>http://localhost:9876/hook/{webhookPath()}</code>
-              </p>
+              <div class="webhook-url-row">
+                <code>http://localhost:9876/hook/{webhookPath()}</code>
+                <button
+                  class="btn-secondary"
+                  onClick={() =>
+                    navigator.clipboard.writeText(
+                      `http://localhost:9876/hook/${webhookPath()}`,
+                    )
+                  }
+                >
+                  Copy URL
+                </button>
+              </div>
             </div>
             <div class="settings-row">
               <label>HMAC secret (optional)</label>
@@ -182,8 +229,66 @@ const CreateAutomation: Component = () => {
             </div>
           </Show>
 
+          <Show when={triggerKind() === "event"}>
+            <div class="settings-row">
+              <label>MCP server name</label>
+              <input
+                value={mcpName()}
+                onInput={(e) => setMcpName(e.currentTarget.value)}
+                placeholder="gmail-mcp"
+              />
+              <p class="muted small">
+                Senda spawns this MCP and calls its first <code>list_*</code> /{" "}
+                <code>search_*</code> tool every poll cycle.
+              </p>
+            </div>
+            <div class="settings-row">
+              <label>Poll interval (seconds)</label>
+              <input
+                type="number"
+                min="15"
+                value={pollInterval()}
+                onInput={(e) => setPollInterval(Number(e.currentTarget.value))}
+              />
+            </div>
+          </Show>
+
           <div class="step-actions">
             <button class="btn-secondary" onClick={() => setStep("agent")}>
+              Back
+            </button>
+            <button class="btn-primary" onClick={() => setStep("prompt")}>
+              Continue
+            </button>
+          </div>
+        </section>
+      </Show>
+
+      <Show when={step() === "prompt"}>
+        <section class="detail-block">
+          <h2>Prompt template</h2>
+          <p class="muted small">
+            Sent to the agent on every firing. Leave empty to use the trigger's natural payload
+            (webhook body / cron placeholder / MCP item JSON). Use <code>{"{event}"}</code> as a
+            placeholder to embed the trigger payload inside your template.
+          </p>
+          <div class="settings-row">
+            <textarea
+              rows={8}
+              class="prompt-input"
+              value={promptTemplate()}
+              onInput={(e) => setPromptTemplate(e.currentTarget.value)}
+              placeholder={
+                triggerKind() === "webhook"
+                  ? "A new event arrived:\n{event}\n\nClassify it and assign an owner."
+                  : triggerKind() === "schedule"
+                    ? "Triage the backlog created since the last run."
+                    : ""
+              }
+            />
+          </div>
+          <div class="step-actions">
+            <button class="btn-secondary" onClick={() => setStep("trigger")}>
               Back
             </button>
             <button class="btn-primary" onClick={() => setStep("guards")}>
@@ -225,7 +330,7 @@ const CreateAutomation: Component = () => {
             </label>
           </div>
           <div class="step-actions">
-            <button class="btn-secondary" onClick={() => setStep("trigger")}>
+            <button class="btn-secondary" onClick={() => setStep("prompt")}>
               Back
             </button>
             <button class="btn-primary" onClick={() => setStep("review")}>
@@ -244,6 +349,7 @@ const CreateAutomation: Component = () => {
                 name: name(),
                 agentId: agentId(),
                 trigger: buildTrigger(),
+                promptTemplate: promptTemplate().trim() ? promptTemplate() : null,
                 guards: {
                   idempotency: idempotency(),
                   rateLimitPerHour: rateLimit(),

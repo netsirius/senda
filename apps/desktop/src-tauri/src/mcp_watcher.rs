@@ -99,7 +99,6 @@ async fn is_due(state: &Arc<Mutex<WatcherState>>, id: i64, _interval: u64) -> bo
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // surfaced through `fire_for_event` once the scheduler accepts custom event ids
 struct PolledEvent {
     id: String,
     body: String,
@@ -160,16 +159,11 @@ async fn poll_one(
     Ok(events)
 }
 
-async fn fire_for_event(scheduler: &Arc<Scheduler>, _automation: &Automation, _event: PolledEvent) {
-    // The Scheduler already applies guards (idempotency / rate limit /
-    // backpressure) when run_now / cron / webhook fires — but it always
-    // generates its own event_id. For event triggers the *MCP* item id is
-    // the right idempotency key. The cleanest path is to expose a
-    // `fire_with_event_id` on the Scheduler; while that lands, the watcher
-    // calls `run_now` (which uses a synthesized event id). The
-    // `processed_events` table de-dupes downstream because the MCP items
-    // typically include a stable `id` we hash into the prompt — the agent
-    // itself short-circuits duplicates. Future polish: pass the real event
-    // id through.
-    let _ = scheduler.run_now(_automation.id, false).await;
+async fn fire_for_event(scheduler: &Arc<Scheduler>, automation: &Automation, event: PolledEvent) {
+    // Use the MCP item id as the idempotency key — the same item showing up
+    // in two consecutive polls becomes a no-op via `processed_events`.
+    let event_id = format!("mcp:{}:{}", automation.id, event.id);
+    let _ = scheduler
+        .fire_external(automation.id, event_id, event.body, false)
+        .await;
 }

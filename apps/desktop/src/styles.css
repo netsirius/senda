@@ -461,6 +461,23 @@ code {
   font-size: 11px;
 }
 
+.webhook-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--bg-elev-2);
+  border-radius: 6px;
+}
+
+.webhook-url-row code {
+  flex: 1;
+  background: transparent;
+  padding: 0;
+  word-break: break-all;
+}
+
 .muted.small {
   font-size: 11px;
   margin-top: 6px;

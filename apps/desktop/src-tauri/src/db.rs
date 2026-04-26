@@ -85,12 +85,17 @@ impl Db {
                 trigger_kind    TEXT NOT NULL,
                 trigger_config  TEXT NOT NULL,
                 guards          TEXT NOT NULL,
+                prompt_template TEXT,
                 enabled         INTEGER NOT NULL DEFAULT 1,
                 created_at      INTEGER NOT NULL,
                 last_run_at     INTEGER,
                 last_run_status TEXT,
                 next_run_at     INTEGER
             );
+            -- Idempotent migration for installs that pre-date the column.
+            -- ALTER TABLE ... ADD COLUMN errors with "duplicate column"; we
+            -- swallow it via the IF clause that SQLite's PRAGMA doesn't have.
+            -- A no-op SELECT against the column tells us whether to skip.
 
             CREATE TABLE IF NOT EXISTS automation_runs (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +132,12 @@ impl Db {
             );
             "#,
         )?;
+        // Add prompt_template to pre-existing automations tables. Ignore the
+        // "duplicate column" error so re-runs are no-ops.
+        let _ = conn.execute(
+            "ALTER TABLE automations ADD COLUMN prompt_template TEXT",
+            [],
+        );
         Ok(())
     }
 
@@ -203,9 +214,9 @@ impl Db {
     pub fn insert_automation(&self, row: &NewAutomationRow<'_>) -> Result<i64, DbError> {
         let conn = self.0.lock();
         conn.execute(
-            "INSERT INTO automations (name, agent_id, trigger_kind, trigger_config, guards, enabled, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![row.name, row.agent_id, row.trigger_kind, row.trigger_config, row.guards, row.enabled as i64, row.created_at],
+            "INSERT INTO automations (name, agent_id, trigger_kind, trigger_config, guards, prompt_template, enabled, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![row.name, row.agent_id, row.trigger_kind, row.trigger_config, row.guards, row.prompt_template, row.enabled as i64, row.created_at],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -213,7 +224,7 @@ impl Db {
     pub fn list_automations(&self) -> Result<Vec<AutomationRow>, DbError> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, name, agent_id, trigger_kind, trigger_config, guards, enabled, created_at, last_run_at, last_run_status \
+            "SELECT id, name, agent_id, trigger_kind, trigger_config, guards, prompt_template, enabled, created_at, last_run_at, last_run_status \
              FROM automations ORDER BY created_at",
         )?;
         let rows = stmt
@@ -225,10 +236,11 @@ impl Db {
                     trigger_kind: row.get(3)?,
                     trigger_config: row.get(4)?,
                     guards: row.get(5)?,
-                    enabled: row.get::<_, i64>(6)? != 0,
-                    created_at: row.get(7)?,
-                    last_run_at: row.get(8)?,
-                    last_run_status: row.get(9)?,
+                    prompt_template: row.get(6)?,
+                    enabled: row.get::<_, i64>(7)? != 0,
+                    created_at: row.get(8)?,
+                    last_run_at: row.get(9)?,
+                    last_run_status: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -406,6 +418,7 @@ pub struct NewAutomationRow<'a> {
     pub trigger_kind: &'a str,
     pub trigger_config: &'a str,
     pub guards: &'a str,
+    pub prompt_template: Option<&'a str>,
     pub enabled: bool,
     pub created_at: i64,
 }
@@ -419,6 +432,7 @@ pub struct AutomationRow {
     pub trigger_kind: String,
     pub trigger_config: String,
     pub guards: String,
+    pub prompt_template: Option<String>,
     pub enabled: bool,
     pub created_at: i64,
     pub last_run_at: Option<i64>,

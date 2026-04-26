@@ -196,6 +196,20 @@ impl Scheduler {
 
     /// Run an automation immediately (manual / dry-run / "Run now" UI button).
     pub async fn run_now(self: &Arc<Self>, id: i64, dry_run: bool) -> Result<(), SchedulerError> {
+        let event_id = format!("manual-{}", Utc::now().timestamp_micros());
+        self.fire_external(id, event_id, "manual run".into(), dry_run)
+            .await
+    }
+
+    /// Fire with a caller-supplied event_id and prompt — the watcher uses
+    /// this so MCP item ids drive idempotency directly.
+    pub async fn fire_external(
+        self: &Arc<Self>,
+        id: i64,
+        event_id: String,
+        prompt: String,
+        dry_run: bool,
+    ) -> Result<(), SchedulerError> {
         let automation = self
             .automations
             .read()
@@ -203,19 +217,10 @@ impl Scheduler {
             .get(&id)
             .cloned()
             .ok_or(SchedulerError::NotFound(id))?;
-        let event_id = format!("manual-{}", Utc::now().timestamp_micros());
         let runner = Arc::clone(&self.runner);
         let store = Arc::clone(&self.store);
         tokio::spawn(async move {
-            fire(
-                automation,
-                runner,
-                store,
-                event_id,
-                "manual run".into(),
-                dry_run,
-            )
-            .await;
+            fire(automation, runner, store, event_id, prompt, dry_run).await;
         });
         Ok(())
     }
@@ -330,7 +335,7 @@ async fn fire(
     runner: Arc<dyn AgentRunner>,
     store: Arc<dyn Store>,
     event_id: String,
-    prompt: String,
+    trigger_payload: String,
     dry_run: bool,
 ) {
     if !automation.enabled {
@@ -341,6 +346,14 @@ async fn fire(
         tracing::debug!(automation = automation.id, %event_id, "skipped — already processed");
         return;
     }
+
+    // Resolve the actual prompt: `prompt_template` wins, with {event}
+    // substituted to the trigger payload (cron placeholder, webhook body,
+    // MCP item JSON…). Falls back to the trigger payload when no template.
+    let prompt = match automation.prompt_template.as_deref() {
+        Some(t) if !t.is_empty() => t.replace("{event}", &trigger_payload),
+        _ => trigger_payload,
+    };
 
     if automation.guards.rate_limit_per_hour > 0
         && store.runs_last_hour(automation.id).await >= automation.guards.rate_limit_per_hour
@@ -449,6 +462,7 @@ mod tests {
             agent_id: "test".into(),
             trigger: Trigger::Manual,
             guards: Guards::default(),
+            prompt_template: None,
             enabled: true,
             last_run_at: None,
             last_run_status: None,

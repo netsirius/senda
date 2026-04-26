@@ -57,6 +57,14 @@ pub struct Automation {
     pub trigger: Trigger,
     pub guards: Guards,
     pub enabled: bool,
+    /// Optional prompt sent to the agent when this automation fires. When
+    /// empty, the trigger's natural payload is used (webhook body for
+    /// webhooks; a placeholder for cron / manual).
+    ///
+    /// Substitutions: `{event}` is replaced with the raw trigger payload
+    /// (e.g. webhook body) so authors can wrap it: `"New ticket:\n{event}"`.
+    #[serde(default)]
+    pub prompt_template: Option<String>,
     pub last_run_at: Option<i64>,
     pub last_run_status: Option<String>,
     pub next_run_at: Option<i64>,

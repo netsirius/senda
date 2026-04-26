@@ -19,6 +19,8 @@ pub struct CreateAutomationArgs {
     pub agent_id: String,
     pub trigger: Trigger,
     pub guards: Guards,
+    #[serde(default)]
+    pub prompt_template: Option<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
 }
@@ -45,6 +47,7 @@ pub async fn create_automation(
         agent_id: args.agent_id,
         trigger: args.trigger,
         guards: args.guards,
+        prompt_template: args.prompt_template,
         enabled: args.enabled,
         last_run_at: None,
         last_run_status: None,

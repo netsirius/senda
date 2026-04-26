@@ -54,6 +54,51 @@ pub struct McpToolList {
 /// empty list on any failure (the editor falls back to the prefix).
 ///
 /// The frontend caches the result; tools rarely change between sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerStatus {
+    pub installed: bool,
+    pub version: Option<String>,
+}
+
+#[tauri::command]
+pub async fn docker_status() -> Result<DockerStatus, String> {
+    let output = std::process::Command::new("docker")
+        .arg("--version")
+        .output();
+    match output {
+        Ok(o) if o.status.success() => Ok(DockerStatus {
+            installed: true,
+            version: Some(String::from_utf8_lossy(&o.stdout).trim().to_string()),
+        }),
+        _ => Ok(DockerStatus {
+            installed: false,
+            version: None,
+        }),
+    }
+}
+
+/// Pull a Docker image up front so the first MCP invocation isn't blocked on
+/// download. Best-effort: if Docker isn't installed we surface the error;
+/// the caller's "Save MCP" still goes through and the user can retry pull
+/// manually.
+#[tauri::command]
+pub async fn docker_pull_image(image: String) -> Result<(), String> {
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.args(["pull", &image]);
+    let status = cmd
+        .status()
+        .await
+        .map_err(|e| format!("docker pull `{image}`: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "docker pull `{image}` exited with code {:?}",
+            status.code()
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn introspect_mcp_tools(name: String) -> Result<McpToolList, String> {
     use crate::mcp_client::McpClient;

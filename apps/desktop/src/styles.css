@@ -1084,3 +1084,41 @@ code {
   gap: 4px;
   flex-wrap: wrap;
 }
+
+.env-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.env-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.env-row-label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.env-row-label code {
+  background: var(--bg-elev-2);
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+.env-row-label span {
+  color: var(--text);
+}
+
+.env-required {
+  font-size: 10px;
+  color: #ffd76b;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

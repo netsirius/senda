@@ -22,8 +22,8 @@ use commands::automations::{
     reject_pending_run, run_automation_now, set_automation_enabled, webhook_self_test,
 };
 use commands::discovery::{
-    add_mcp, create_skill, delete_mcp, delete_skill, introspect_mcp_tools, list_builtin_tools,
-    list_installed_mcps, list_skills,
+    add_mcp, create_skill, delete_mcp, delete_skill, docker_pull_image, docker_status,
+    introspect_mcp_tools, list_builtin_tools, list_installed_mcps, list_skills,
 };
 use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent};
 use commands::execution::{
@@ -93,6 +93,8 @@ pub fn run() {
             delete_skill,
             create_skill,
             introspect_mcp_tools,
+            docker_status,
+            docker_pull_image,
             os_scheduler_status,
             os_scheduler_install,
             os_scheduler_uninstall,

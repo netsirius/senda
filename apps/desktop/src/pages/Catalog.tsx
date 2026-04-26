@@ -1,18 +1,13 @@
-import { createMemo, createResource, createSignal, For, Show, type Component } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
-import type { CatalogEntry } from "senda-shared-types";
+import { createMemo, createSignal, For, Show, type Component } from "solid-js";
+import { A } from "@solidjs/router";
 
 import AgentCard from "../components/AgentCard";
 import AgentErrorCard from "../components/AgentErrorCard";
+import { catalog as entries, refetchCatalog } from "../stores/catalog";
 
 type Tab = "all" | "personal" | "external" | "errors";
 
-async function fetchCatalog(): Promise<CatalogEntry[]> {
-  return await invoke<CatalogEntry[]>("read_catalog");
-}
-
 const Catalog: Component = () => {
-  const [entries, { refetch }] = createResource(fetchCatalog);
   const [search, setSearch] = createSignal("");
   const [tab, setTab] = createSignal<Tab>("all");
 
@@ -61,7 +56,7 @@ const Catalog: Component = () => {
                 : `${counts().all} agent${counts().all === 1 ? "" : "s"} found.`}
             </p>
           </div>
-          <button class="btn-secondary" onClick={() => refetch()}>
+          <button class="btn-secondary" onClick={() => refetchCatalog()}>
             Refresh
           </button>
         </div>
@@ -107,7 +102,13 @@ const Catalog: Component = () => {
           <div class="agent-grid">
             <For each={filtered()}>
               {(e) =>
-                e.kind === "agent" ? <AgentCard agent={e} /> : <AgentErrorCard entry={e} />
+                e.kind === "agent" ? (
+                  <A class="agent-card-link" href={`/agent/${encodeURIComponent(e.id)}`}>
+                    <AgentCard agent={e} />
+                  </A>
+                ) : (
+                  <AgentErrorCard entry={e} />
+                )
               }
             </For>
           </div>

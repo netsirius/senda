@@ -383,3 +383,226 @@ code {
   padding: 12px 16px;
   color: #ffb4b9;
 }
+
+.agent-card-link {
+  display: block;
+  color: inherit;
+}
+
+/* ── Agent detail ─────────────────────────────────────────────────────────── */
+.agent-detail {
+  max-width: 920px;
+}
+
+.breadcrumbs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.breadcrumbs a {
+  color: var(--accent);
+}
+
+.breadcrumbs .dot {
+  color: var(--border);
+}
+
+.agent-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.agent-detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #1a0d2e;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.muted.small {
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.detail-block {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.detail-block h2 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.chip-tool {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.mcp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.mcp-table th,
+.mcp-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.mcp-table th {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.mcp-table tr:last-child td {
+  border-bottom: none;
+}
+
+.env-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.masked {
+  color: var(--accent);
+}
+
+.cli-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.cli-config-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.cli-config-card h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.cli-config-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.cli-config-card dt {
+  color: var(--text-dim);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.cli-config-card dd {
+  margin: 0;
+}
+
+/* Markdown body */
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+
+.markdown-body h1 {
+  font-size: 18px;
+}
+
+.markdown-body h2 {
+  font-size: 16px;
+}
+
+.markdown-body h3 {
+  font-size: 14px;
+}
+
+.markdown-body p {
+  margin: 8px 0;
+}
+
+.markdown-body code {
+  background: var(--bg-elev-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.markdown-body pre {
+  background: var(--bg-elev-2);
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 24px;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--text-dim);
+}

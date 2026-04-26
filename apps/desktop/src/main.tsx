@@ -4,6 +4,7 @@ import { Router, Route } from "@solidjs/router";
 
 import App from "./App";
 import Catalog from "./pages/Catalog";
+import AgentDetail from "./pages/AgentDetail";
 
 import "./styles.css";
 
@@ -16,6 +17,7 @@ render(
   () => (
     <Router root={App}>
       <Route path="/" component={Catalog} />
+      <Route path="/agent/*id" component={AgentDetail} />
     </Router>
   ),
   root,

@@ -16,10 +16,13 @@
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
     "lucide-solid": "^0.460.0",
+    "marked": "^15.0.6",
+    "dompurify": "^3.2.4",
     "senda-shared-types": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.7",
+    "@types/dompurify": "^3.2.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
     "vite-plugin-solid": "^2.11.0"

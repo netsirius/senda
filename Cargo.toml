@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "crates/core",
+    "crates/acp-client",
+    "crates/git-providers",
+    "crates/agent-parser",
+    "crates/scheduler",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Hector Santos <netsirius@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/netsirius/senda"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+anyhow = "1"
+thiserror = "2"
+specta = { version = "2.0.0-rc.22", features = ["derive", "serde_json"] }
+specta-typescript = "0.0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+senda-core = { path = "crates/core" }
+senda-acp-client = { path = "crates/acp-client" }
+senda-git-providers = { path = "crates/git-providers" }
+senda-agent-parser = { path = "crates/agent-parser" }
+senda-scheduler = { path = "crates/scheduler" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

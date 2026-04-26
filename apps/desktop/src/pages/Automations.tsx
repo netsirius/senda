@@ -79,9 +79,14 @@ const Automations: Component = () => {
               <code>http://localhost:9876/hook/&lt;path&gt;</code>.
             </p>
           </div>
-          <A class="btn-primary" href="/automations/new">
-            New automation
-          </A>
+          <div class="catalog-header-actions">
+            <A class="btn-primary" href="/automations/new">
+              New automation
+            </A>
+            <A class="btn-secondary" href="/automations/new">
+              📚 Browse templates
+            </A>
+          </div>
         </div>
 
         <div class="catalog-tabs">

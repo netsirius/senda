@@ -61,10 +61,26 @@ pub struct Automation {
     /// empty, the trigger's natural payload is used (webhook body for
     /// webhooks; a placeholder for cron / manual).
     ///
-    /// Substitutions: `{event}` is replaced with the raw trigger payload
-    /// (e.g. webhook body) so authors can wrap it: `"New ticket:\n{event}"`.
+    /// Substitutions: `{event}` is replaced with the raw trigger payload;
+    /// `{{KEY}}` is replaced with the matching `variables` entry; both
+    /// substitutions also apply to subsequent agents in the `chain`.
     #[serde(default)]
     pub prompt_template: Option<String>,
+    /// Per-automation variables substituted into the prompt as `{{KEY}}`.
+    /// Useful for company-specific values like project keys or team ids
+    /// that change between deployments without touching the agent body.
+    #[serde(default)]
+    pub variables: std::collections::BTreeMap<String, String>,
+    /// When true, the previous successful run's output is prepended to
+    /// every fire's prompt. Lets a cron see what it did last time without
+    /// needing an external store.
+    #[serde(default)]
+    pub include_last_output: bool,
+    /// Subsequent agent ids to fire after the primary agent succeeds.
+    /// Each step receives the previous step's output as its trigger payload
+    /// (so `{event}` resolves to the prior agent's stdout).
+    #[serde(default)]
+    pub chain: Vec<String>,
     pub last_run_at: Option<i64>,
     pub last_run_status: Option<String>,
     pub next_run_at: Option<i64>,

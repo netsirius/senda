@@ -23,6 +23,12 @@ pub struct CreateAutomationArgs {
     pub guards: Guards,
     #[serde(default)]
     pub prompt_template: Option<String>,
+    #[serde(default)]
+    pub variables: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub include_last_output: bool,
+    #[serde(default)]
+    pub chain: Vec<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
 }
@@ -50,6 +56,9 @@ pub async fn create_automation(
         trigger: args.trigger,
         guards: args.guards,
         prompt_template: args.prompt_template,
+        variables: args.variables,
+        include_last_output: args.include_last_output,
+        chain: args.chain,
         enabled: args.enabled,
         last_run_at: None,
         last_run_status: None,

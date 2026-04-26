@@ -66,6 +66,9 @@ impl Store for SqliteStore {
         let _ = self.app.emit("approvals:changed", ());
         id
     }
+    async fn last_successful_output(&self, automation_id: i64) -> Option<String> {
+        self.db.last_successful_output(automation_id).ok().flatten()
+    }
 }
 
 /// Production runner: resolves the agent from the catalog, spawns the
@@ -167,6 +170,19 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
         serde_json::to_string(&automation.trigger).map_err(|e| format!("encode trigger: {e}"))?;
     let guards =
         serde_json::to_string(&automation.guards).map_err(|e| format!("encode guards: {e}"))?;
+    let variables_json = if automation.variables.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::to_string(&automation.variables)
+                .map_err(|e| format!("encode vars: {e}"))?,
+        )
+    };
+    let chain_json = if automation.chain.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&automation.chain).map_err(|e| format!("encode chain: {e}"))?)
+    };
     db.insert_automation(&NewAutomationRow {
         name: &automation.name,
         agent_id: &automation.agent_id,
@@ -174,6 +190,9 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
         trigger_config: &trigger_config,
         guards: &guards,
         prompt_template: automation.prompt_template.as_deref(),
+        variables_json: variables_json.as_deref(),
+        include_last_output: automation.include_last_output,
+        chain_json: chain_json.as_deref(),
         enabled: automation.enabled,
         created_at: unix_now(),
     })
@@ -183,6 +202,16 @@ pub fn save_automation_to_db(db: &Db, automation: &Automation) -> Result<i64, St
 pub fn automation_from_row(row: &crate::db::AutomationRow) -> Option<Automation> {
     let trigger = serde_json::from_str(&row.trigger_config).ok()?;
     let guards = serde_json::from_str(&row.guards).ok()?;
+    let variables = row
+        .variables_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let chain = row
+        .chain_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
     Some(Automation {
         id: row.id,
         name: row.name.clone(),
@@ -190,6 +219,9 @@ pub fn automation_from_row(row: &crate::db::AutomationRow) -> Option<Automation>
         trigger,
         guards,
         prompt_template: row.prompt_template.clone(),
+        variables,
+        include_last_output: row.include_last_output,
+        chain,
         enabled: row.enabled,
         last_run_at: row.last_run_at,
         last_run_status: row.last_run_status.clone(),

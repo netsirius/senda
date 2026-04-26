@@ -21,6 +21,9 @@ const CreateAutomation: Component = () => {
   const [mcpName, setMcpName] = createSignal("");
   const [pollInterval, setPollInterval] = createSignal(60);
   const [promptTemplate, setPromptTemplate] = createSignal("");
+  const [variablesText, setVariablesText] = createSignal("");
+  const [includeLastOutput, setIncludeLastOutput] = createSignal(false);
+  const [chainAgentIds, setChainAgentIds] = createSignal<string[]>([]);
   const [idempotency, setIdempotency] = createSignal(true);
   const [rateLimit, setRateLimit] = createSignal(100);
   const [approvalGate, setApprovalGate] = createSignal(false);
@@ -108,6 +111,12 @@ ${a.body}`;
     setBusy(true);
     setError(null);
     try {
+      const variables: Record<string, string> = {};
+      for (const line of variablesText().split("\n")) {
+        const eq = line.indexOf("=");
+        if (eq <= 0) continue;
+        variables[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+      }
       await invoke("create_automation", {
         args: {
           name: name(),
@@ -120,6 +129,9 @@ ${a.body}`;
             backpressure: "skip",
           },
           promptTemplate: promptTemplate().trim() ? promptTemplate() : null,
+          variables,
+          includeLastOutput: includeLastOutput(),
+          chain: chainAgentIds(),
           enabled: true,
         },
       });
@@ -138,8 +150,8 @@ ${a.body}`;
         <p class="page-subtitle">Pick an agent, a trigger, the guards, then review.</p>
       </header>
 
-      <details class="template-picker">
-        <summary>Start from a template</summary>
+      <details class="template-picker" open>
+        <summary>📚 Start from a template ({TEMPLATES.length} ready-to-use)</summary>
         <div class="template-grid">
           <For each={TEMPLATES}>
             {(t) => (
@@ -367,9 +379,9 @@ ${a.body}`;
         <section class="detail-block">
           <h2>Prompt template</h2>
           <p class="muted small">
-            Sent to the agent on every firing. Leave empty to use the trigger's natural payload
-            (webhook body / cron placeholder / MCP item JSON). Use <code>{"{event}"}</code> as a
-            placeholder to embed the trigger payload inside your template.
+            Sent to the agent on every firing. Leave empty to use the trigger's natural payload.
+            Substitutions: <code>{"{event}"}</code> = trigger payload (webhook body, MCP item,
+            cron placeholder); <code>{"{{KEY}}"}</code> = matching <strong>variable</strong> below.
           </p>
           <div class="settings-row">
             <textarea
@@ -379,13 +391,92 @@ ${a.body}`;
               onInput={(e) => setPromptTemplate(e.currentTarget.value)}
               placeholder={
                 triggerKind() === "webhook"
-                  ? "A new event arrived:\n{event}\n\nClassify it and assign an owner."
+                  ? "A new event arrived:\n{event}\n\nClassify and route to {{TEAM_OWNER}}."
                   : triggerKind() === "schedule"
-                    ? "Triage the backlog created since the last run."
+                    ? "Triage backlog of {{PROJECT_KEY}} created since last run."
                     : ""
               }
             />
           </div>
+
+          <h3 style="margin-top:16px">Variables (optional)</h3>
+          <p class="muted small">
+            One <code>KEY=value</code> per line. References <code>{"{{KEY}}"}</code> in the
+            prompt template (and inside the trigger payload it wraps) get replaced.
+          </p>
+          <div class="settings-row">
+            <textarea
+              rows={4}
+              class="prompt-input"
+              value={variablesText()}
+              onInput={(e) => setVariablesText(e.currentTarget.value)}
+              placeholder={"PROJECT_KEY=PLAT\nTEAM_OWNER=platform-oncall"}
+            />
+          </div>
+
+          <div class="settings-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={includeLastOutput()}
+                onChange={(e) => setIncludeLastOutput(e.currentTarget.checked)}
+              />{" "}
+              Prepend previous run output (shared state)
+            </label>
+            <p class="muted small">
+              When on, the agent receives the last successful run's output as preface — useful
+              for cron jobs that need to know what they did before.
+            </p>
+          </div>
+
+          <h3 style="margin-top:16px">Chain (optional)</h3>
+          <p class="muted small">
+            After the primary agent succeeds, run these agents in order. Each one receives the
+            previous agent's output as <code>{"{event}"}</code>.
+          </p>
+          <div class="settings-row">
+            <For each={chainAgentIds()}>
+              {(id, idx) => (
+                <div class="chain-row">
+                  <span>{idx() + 1}. </span>
+                  <select
+                    value={id}
+                    onChange={(e) => {
+                      const next = [...chainAgentIds()];
+                      next[idx()] = e.currentTarget.value;
+                      setChainAgentIds(next);
+                    }}
+                  >
+                    <option value="" disabled>
+                      Pick an agent…
+                    </option>
+                    <For each={availableAgents()}>
+                      {(e) =>
+                        e.kind === "agent" ? <option value={e.id}>{e.agent.name}</option> : null
+                      }
+                    </For>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn-danger small"
+                    onClick={() => {
+                      setChainAgentIds(chainAgentIds().filter((_, i) => i !== idx()));
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </For>
+            <button
+              type="button"
+              class="btn-secondary small"
+              onClick={() => setChainAgentIds([...chainAgentIds(), ""])}
+            >
+              + Add chain step
+            </button>
+          </div>
+
           <div class="step-actions">
             <button class="btn-secondary" onClick={() => setStep("trigger")}>
               Back

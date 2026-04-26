@@ -1131,3 +1131,14 @@ code {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+
+.chain-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chain-row select {
+  flex: 1;
+}

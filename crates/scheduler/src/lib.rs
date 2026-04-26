@@ -93,6 +93,11 @@ pub trait Store: Send + Sync + 'static {
     ) -> i64 {
         0
     }
+    /// Last successful output for the automation, or None when no
+    /// successful run yet exists. Used by the `include_last_output` flag.
+    async fn last_successful_output(&self, _automation_id: i64) -> Option<String> {
+        None
+    }
 }
 
 pub struct Scheduler {
@@ -358,18 +363,12 @@ async fn fire(
         return;
     }
 
-    // Resolve the actual prompt: `prompt_template` wins, with {event}
-    // substituted to the trigger payload (cron placeholder, webhook body,
-    // MCP item JSON…). Falls back to the trigger payload when no template.
-    let prompt = match automation.prompt_template.as_deref() {
-        Some(t) if !t.is_empty() => t.replace("{event}", &trigger_payload),
-        _ => trigger_payload,
-    };
+    // Resolve the prompt with three layers of substitution:
+    //   - `{event}` → trigger payload
+    //   - `{{KEY}}` → automation.variables entry
+    //   - prepend last successful output when `include_last_output`
+    let prompt = build_prompt(&automation, &trigger_payload, &store).await;
 
-    // Approval gate — instead of running, queue the run for human review.
-    // The host (Tauri command) picks it up and replays the prompt when the
-    // user clicks Approve. Idempotency was already checked above so two
-    // concurrent fires for the same event still queue once.
     if automation.guards.approval_gate {
         let started_at = chrono::Utc::now().timestamp();
         store
@@ -392,9 +391,6 @@ async fn fire(
         return;
     }
 
-    // Backpressure: in this Phase 3 build, `Skip` is the only fully wired
-    // policy. Queue and Concurrent are documented in PLAN; future passes can
-    // wire dedicated channels per automation.
     if matches!(automation.guards.backpressure, BackpressurePolicy::Skip)
         && in_flight_count(&store, automation.id).await > 0
     {
@@ -402,22 +398,81 @@ async fn fire(
         return;
     }
 
+    // Step 1 — primary agent.
     let started_at = Utc::now().timestamp();
     let run_id = store.record_run_start(automation.id, started_at).await;
-    let outcome = runner
+    let mut last_outcome = runner
         .run(RunContext {
             automation_id: automation.id,
             agent_id: automation.agent_id.clone(),
-            prompt,
+            prompt: prompt.clone(),
             dry_run,
             event_id: event_id.clone(),
         })
         .await;
     let ended_at = Utc::now().timestamp();
-    store.record_run_end(run_id, ended_at, &outcome).await;
-    if outcome.success && automation.guards.idempotency {
+    store.record_run_end(run_id, ended_at, &last_outcome).await;
+
+    // Step 2..N — chain. Each subsequent agent receives the previous
+    // outcome's output as its trigger payload (so `{event}` resolves to
+    // the prior agent's stdout). Stop on first failure; idempotency only
+    // marks processed when the whole chain succeeds, so a partial chain
+    // re-fires on the next trigger.
+    if last_outcome.success {
+        for next_agent in automation.chain.iter() {
+            let prior_output = last_outcome.output.clone().unwrap_or_default();
+            let chain_prompt = build_prompt(&automation, &prior_output, &store).await;
+            let chain_started = Utc::now().timestamp();
+            let chain_run_id = store.record_run_start(automation.id, chain_started).await;
+            let chain_outcome = runner
+                .run(RunContext {
+                    automation_id: automation.id,
+                    agent_id: next_agent.clone(),
+                    prompt: chain_prompt,
+                    dry_run,
+                    event_id: format!("{event_id}::chain::{next_agent}"),
+                })
+                .await;
+            let chain_ended = Utc::now().timestamp();
+            store
+                .record_run_end(chain_run_id, chain_ended, &chain_outcome)
+                .await;
+            if !chain_outcome.success {
+                last_outcome = chain_outcome;
+                break;
+            }
+            last_outcome = chain_outcome;
+        }
+    }
+
+    if last_outcome.success && automation.guards.idempotency {
         store.mark_processed(automation.id, &event_id).await;
     }
+}
+
+async fn build_prompt(
+    automation: &Automation,
+    trigger_payload: &str,
+    store: &Arc<dyn Store>,
+) -> String {
+    let mut base = match automation.prompt_template.as_deref() {
+        Some(t) if !t.is_empty() => t.replace("{event}", trigger_payload),
+        _ => trigger_payload.to_string(),
+    };
+
+    for (k, v) in &automation.variables {
+        base = base.replace(&format!("{{{{{k}}}}}"), v);
+    }
+
+    if automation.include_last_output {
+        if let Some(prev) = store.last_successful_output(automation.id).await {
+            if !prev.trim().is_empty() {
+                base = format!("Previous run output:\n{prev}\n\n---\n\n{base}");
+            }
+        }
+    }
+
+    base
 }
 
 async fn in_flight_count(_store: &Arc<dyn Store>, _automation_id: i64) -> u32 {
@@ -493,6 +548,9 @@ mod tests {
             trigger: Trigger::Manual,
             guards: Guards::default(),
             prompt_template: None,
+            variables: Default::default(),
+            include_last_output: false,
+            chain: Vec::new(),
             enabled: true,
             last_run_at: None,
             last_run_status: None,

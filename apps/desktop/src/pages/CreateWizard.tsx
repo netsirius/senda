@@ -1,5 +1,7 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show, type Component } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AgentCli } from "senda-shared-types";
 
 interface Template {
@@ -7,6 +9,18 @@ interface Template {
   name: string;
   description: string;
   source: string;
+}
+
+interface DetectedAgent {
+  originalPath: string;
+  canonicalPath: string;
+  cli: AgentCli;
+  name: string;
+}
+
+interface GenerateResult {
+  canonicalSource: string;
+  rawOutput: string;
 }
 
 const TEMPLATES: Template[] = [
@@ -87,11 +101,33 @@ ${body}
 
 const ALL_CLIS: AgentCli[] = ["copilot", "claude-code", "gemini"];
 
+type Mode = "blank" | "template" | "generate" | "chat";
+
 const CreateWizard: Component = () => {
   const navigate = useNavigate();
-  const [step, setStep] = createSignal<"targets" | "mode" | "template">("targets");
+  const [step, setStep] = createSignal<"targets" | "mode" | "template" | "generate" | "chat">(
+    "targets",
+  );
   const [targets, setTargets] = createSignal<AgentCli[]>(["copilot"]);
+  // `mode` lives only as a transient label for the active step — the step
+  // itself drives what's rendered, so we just write to setMode without
+  // reading it.
+  const [, setMode] = createSignal<Mode | null>(null);
   const [selected, setSelected] = createSignal<Template | null>(null);
+  const [intent, setIntent] = createSignal("");
+  const [primaryCli, setPrimaryCli] = createSignal<AgentCli>("copilot");
+  const [generating, setGenerating] = createSignal(false);
+  const [generateError, setGenerateError] = createSignal<string | null>(null);
+  const [detected, setDetected] = createSignal<DetectedAgent[]>([]);
+
+  let unlisten: UnlistenFn | undefined;
+
+  onMount(async () => {
+    unlisten = await listen<DetectedAgent>("agents:detected", (e) => {
+      setDetected((prev) => [e.payload, ...prev]);
+    });
+  });
+  onCleanup(() => unlisten?.());
 
   const toggle = (cli: AgentCli) => {
     setTargets((prev) => (prev.includes(cli) ? prev.filter((c) => c !== cli) : [...prev, cli]));
@@ -117,19 +153,42 @@ Write your prompt here.
     navigate(`/agent/edit?template=${encodeURIComponent(adapted)}`);
   };
 
+  const generate = async () => {
+    if (!intent().trim()) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const result = await invoke<GenerateResult>("generate_agent", {
+        args: {
+          primaryCli: primaryCli(),
+          userIntent: intent(),
+          targets: targets(),
+        },
+      });
+      navigate(`/agent/edit?template=${encodeURIComponent(result.canonicalSource)}`);
+    } catch (e) {
+      setGenerateError(String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const adoptDetected = (d: DetectedAgent) => {
+    navigate(`/agent/edit?path=${encodeURIComponent(d.canonicalPath)}&draft=1`);
+  };
+
   return (
     <section class="catalog">
       <header class="page-header">
         <h1>Create agent</h1>
-        <p class="page-subtitle">Pick targets, then choose how to start.</p>
+        <p class="page-subtitle">Pick targets, then pick how to start.</p>
       </header>
 
       <ol class="stepper">
         <li classList={{ active: step() === "targets", done: step() !== "targets" }}>
           1. Targets
         </li>
-        <li classList={{ active: step() === "mode", done: step() === "template" }}>2. Mode</li>
-        <li classList={{ active: step() === "template" }}>3. Template (optional)</li>
+        <li classList={{ active: step() === "mode" }}>2. Mode</li>
       </ol>
 
       <Show when={step() === "targets"}>
@@ -175,9 +234,20 @@ Write your prompt here.
               <h3>Blank</h3>
               <p>Start with a tiny canonical document and edit from scratch.</p>
             </button>
-            <button class="provider-card" onClick={() => setStep("template")}>
+            <button class="provider-card" onClick={() => { setMode("template"); setStep("template"); }}>
               <h3>From template</h3>
               <p>{TEMPLATES.length} curated starting points across common agent shapes.</p>
+            </button>
+            <button class="provider-card" onClick={() => { setMode("generate"); setStep("generate"); }}>
+              <h3>Generate from prompt</h3>
+              <p>Describe what you want. Senda asks your primary CLI to draft the agent doc.</p>
+            </button>
+            <button class="provider-card" onClick={() => { setMode("chat"); setStep("chat"); }}>
+              <h3>Chat with your CLI</h3>
+              <p>
+                Run your CLI's <code>agent-creator</code> in a separate window — Senda watches the
+                native folders and imports any new agent it sees.
+              </p>
             </button>
           </div>
           <div class="step-actions">
@@ -218,6 +288,83 @@ Write your prompt here.
               onClick={() => selected() && startFromTemplate(selected()!)}
             >
               Use template
+            </button>
+          </div>
+        </section>
+      </Show>
+
+      <Show when={step() === "generate"}>
+        <section class="detail-block">
+          <h2>Generate from prompt</h2>
+          <p class="muted small">
+            Senda invokes your selected CLI without a custom agent and asks it to produce a Senda
+            canonical document. The result lands in the editor — review before saving.
+          </p>
+          <div class="settings-row">
+            <label>Primary CLI</label>
+            <select
+              value={primaryCli()}
+              onChange={(e) => setPrimaryCli(e.currentTarget.value as AgentCli)}
+            >
+              <For each={ALL_CLIS}>{(c) => <option value={c}>{c}</option>}</For>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>What should the agent do?</label>
+            <textarea
+              rows={6}
+              class="prompt-input"
+              value={intent()}
+              onInput={(e) => setIntent(e.currentTarget.value)}
+              placeholder="Triage incoming Linear tickets every 10 minutes, classify by team, …"
+            />
+          </div>
+          <Show when={generateError()}>
+            <p class="error-banner">{generateError()}</p>
+          </Show>
+          <div class="step-actions">
+            <button class="btn-secondary" onClick={() => setStep("mode")}>
+              Back
+            </button>
+            <button
+              class="btn-primary"
+              disabled={generating() || !intent().trim()}
+              onClick={generate}
+            >
+              {generating() ? "Asking your CLI…" : "Generate"}
+            </button>
+          </div>
+        </section>
+      </Show>
+
+      <Show when={step() === "chat"}>
+        <section class="detail-block">
+          <h2>Chat with your CLI's agent-creator</h2>
+          <p class="muted small">
+            Open your CLI in any terminal and run its agent creation flow (e.g.{" "}
+            <code>copilot --agent=agent-creator</code>). When it writes a new file under one of the
+            native folders, Senda detects it, converts to canonical, and lists it below — click to
+            open in the editor.
+          </p>
+          <Show
+            when={detected().length > 0}
+            fallback={<p class="muted">Watching for new agent files…</p>}
+          >
+            <ul class="env-list">
+              <For each={detected()}>
+                {(d) => (
+                  <li>
+                    <button class="btn-secondary" onClick={() => adoptDetected(d)}>
+                      Open <code>{d.name}</code> ({d.cli})
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+          <div class="step-actions">
+            <button class="btn-secondary" onClick={() => setStep("mode")}>
+              Back
             </button>
           </div>
         </section>

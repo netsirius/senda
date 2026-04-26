@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AgentCli } from "senda-shared-types";
 
 import { refetchCatalog } from "../stores/catalog";
+import { builtinTools, mcps } from "../stores/discovery";
 
 interface Warning {
   target: AgentCli;
@@ -192,6 +193,7 @@ ${body()}`;
           <div class="settings-row">
             <label>Tools (comma-separated)</label>
             <input
+              list="tools-suggestions"
               value={tools().join(", ")}
               onInput={(e) =>
                 setTools(
@@ -202,6 +204,15 @@ ${body()}`;
                 )
               }
             />
+            <datalist id="tools-suggestions">
+              <For each={availableTools(targets())}>
+                {(t) => <option value={t} />}
+              </For>
+            </datalist>
+            <p class="muted small">
+              {availableTools(targets()).length} tools known across selected CLIs and detected
+              MCPs. Type to narrow; comma-separate multiples.
+            </p>
           </div>
           <div class="settings-row">
             <label>Prompt body</label>
@@ -241,6 +252,24 @@ ${body()}`;
     </section>
   );
 };
+
+// ── tools suggestion ────────────────────────────────────────────────────────
+
+function availableTools(selectedTargets: AgentCli[]): string[] {
+  const set = new Set<string>();
+  // Built-in tools for any selected CLI.
+  for (const t of selectedTargets) {
+    const entry = (builtinTools() ?? []).find((b) => b.cli === t);
+    entry?.tools.forEach((tool) => set.add(tool));
+  }
+  // MCP tools — we don't introspect each MCP, but `<server>/<tool>` is a
+  // useful convention for canonical agents and the user can complete the
+  // server name from disk.
+  for (const m of mcps() ?? []) {
+    set.add(`${m.name}/`);
+  }
+  return Array.from(set).sort();
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 

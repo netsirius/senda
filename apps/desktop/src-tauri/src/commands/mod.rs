@@ -1,7 +1,9 @@
 pub mod agents;
 pub mod automations;
+pub mod discovery;
 pub mod editor;
 pub mod execution;
+pub mod generate;
 pub mod greeting;
 pub mod oauth;
 pub mod publish;

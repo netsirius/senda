@@ -5,8 +5,12 @@
 //! Phase 3 brings the local scheduler online (cron / webhook / manual) plus
 //! an automations CRUD surface.
 
+mod agent_runtime;
+mod agent_watcher;
 mod commands;
 mod db;
+mod mcp_client;
+mod mcp_watcher;
 mod scheduler_host;
 mod secrets;
 mod sync;
@@ -16,8 +20,10 @@ use commands::automations::{
     create_automation, delete_automation, list_automation_runs, list_automations,
     run_automation_now, set_automation_enabled,
 };
+use commands::discovery::{list_builtin_tools, list_installed_mcps, list_skills};
 use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent};
 use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
+use commands::generate::generate_agent;
 use commands::greeting::hello_world;
 use commands::oauth::{github_device_authorize, github_device_poll};
 use commands::publish::publish_agent;
@@ -64,11 +70,16 @@ pub fn run() {
             list_drafts,
             read_agent_source,
             publish_agent,
+            list_installed_mcps,
+            list_builtin_tools,
+            list_skills,
+            generate_agent,
         ])
         .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");
             let handle = app.handle().clone();
             sync::spawn_background_sync(handle.clone(), db.clone());
+            agent_watcher::spawn_agent_watcher(handle.clone());
             // Scheduler boots inside setup so the runner has a real AppHandle.
             let scheduler = scheduler_host::spawn_scheduler(handle, db.clone());
             app.manage(scheduler);

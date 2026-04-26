@@ -15,6 +15,8 @@ import CreateAutomation from "./pages/CreateAutomation";
 import AgentEditor from "./pages/AgentEditor";
 import CreateWizard from "./pages/CreateWizard";
 import PublishFlow from "./pages/PublishFlow";
+import Mcps from "./pages/Mcps";
+import Skills from "./pages/Skills";
 
 import "./styles.css";
 
@@ -38,6 +40,8 @@ render(
       <Route path="/agent/edit" component={AgentEditor} />
       <Route path="/agent/publish" component={PublishFlow} />
       <Route path="/create" component={CreateWizard} />
+      <Route path="/mcps" component={Mcps} />
+      <Route path="/skills" component={Skills} />
     </Router>
   ),
   root,

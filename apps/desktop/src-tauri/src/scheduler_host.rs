@@ -1,17 +1,21 @@
 //! Glue between the in-process [`senda_scheduler::Scheduler`] and the rest of
-//! the Tauri app. We provide the two trait impls the scheduler needs
-//! ([`Store`], [`AgentRunner`]) and helper functions to load automations from
-//! SQLite at startup.
+//! the Tauri app. Provides the two trait impls the scheduler needs
+//! ([`Store`], [`AgentRunner`]) and bootstraps automations from SQLite.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use senda_core::Automation;
 use senda_scheduler::{AgentRunner, RunContext, RunOutcome, Scheduler, Store};
 use tauri::{AppHandle, Emitter};
 
+use crate::agent_runtime::{resolve_agent, spawn_for_automation};
 use crate::db::{Db, NewAutomationRow};
+
+/// Worst-case wall clock for a single automation run. Anything longer is
+/// almost always a stuck CLI; the scheduler kills it and records the timeout.
+const RUN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 pub struct SqliteStore {
     db: Db,
@@ -55,16 +59,16 @@ impl Store for SqliteStore {
     }
 }
 
-/// Phase 3 runner — emits a `automation:fired` event so the UI can show the
-/// run in real time. It does NOT spawn a CLI process yet; that integration
-/// stitches together with the existing PTY runner in a follow-up. For now
-/// the scheduler loop, guards and audit trail are all wired and verifiable.
-pub struct EventEmittingRunner {
+/// Production runner: resolves the agent from the catalog, spawns the
+/// matching CLI without a PTY, captures stdout+stderr, and emits a
+/// `automation:fired` event so the UI can refresh the runs list.
+pub struct CliBackedRunner {
     pub app: AppHandle,
+    pub db: Db,
 }
 
 #[async_trait]
-impl AgentRunner for EventEmittingRunner {
+impl AgentRunner for CliBackedRunner {
     async fn run(&self, ctx: RunContext) -> RunOutcome {
         tracing::info!(
             automation = ctx.automation_id,
@@ -72,24 +76,60 @@ impl AgentRunner for EventEmittingRunner {
             event = %ctx.event_id,
             "automation fired"
         );
+
+        let resolved = resolve_agent(&self.db, &ctx.agent_id);
+        let Some((cli, agent_name)) = resolved else {
+            return RunOutcome {
+                success: false,
+                output: None,
+                error: Some(format!(
+                    "agent `{}` not found — was it deleted?",
+                    ctx.agent_id
+                )),
+            };
+        };
+
+        let result =
+            spawn_for_automation(cli, &agent_name, &ctx.prompt, ctx.dry_run, RUN_TIMEOUT).await;
         let _ = self.app.emit("automation:fired", &ctx.automation_id);
+
+        if let Some(err) = &result.error {
+            return RunOutcome {
+                success: false,
+                output: if result.output.is_empty() {
+                    None
+                } else {
+                    Some(result.output)
+                },
+                error: Some(err.clone()),
+            };
+        }
+
         RunOutcome {
-            success: true,
-            output: Some(format!("[stub] would run {} with prompt", ctx.agent_id)),
-            error: None,
+            success: result.success,
+            output: Some(result.output),
+            error: result.exit_code.and_then(|code| {
+                if code == 0 {
+                    None
+                } else {
+                    Some(format!("exit code {code}"))
+                }
+            }),
         }
     }
 }
 
 pub fn spawn_scheduler(app: AppHandle, db: Db) -> Arc<Scheduler> {
-    let runner: Arc<dyn AgentRunner> = Arc::new(EventEmittingRunner { app: app.clone() });
+    let runner: Arc<dyn AgentRunner> = Arc::new(CliBackedRunner {
+        app: app.clone(),
+        db: db.clone(),
+    });
     let store: Arc<dyn Store> = Arc::new(SqliteStore::new(db.clone()));
 
     tauri::async_runtime::block_on(async move {
         let scheduler = Scheduler::new(runner, store).await.expect("scheduler init");
         scheduler.start().await.expect("scheduler start");
 
-        // Reload automations from SQLite.
         if let Ok(rows) = db.list_automations() {
             for row in rows {
                 if let Some(automation) = automation_from_row(&row) {
@@ -100,12 +140,13 @@ pub fn spawn_scheduler(app: AppHandle, db: Db) -> Arc<Scheduler> {
             }
         }
 
-        // Webhook server on localhost:9876 — falls back gracefully if the port
-        // is taken (the user can override via env once Phase 3 polish lands).
         let addr = "127.0.0.1:9876".parse().expect("static addr");
         if let Err(e) = scheduler.start_webhook_server(addr).await {
             tracing::warn!(?e, "webhook server failed to start");
         }
+
+        // Phase B: spawn the MCP event-trigger watcher loop.
+        crate::mcp_watcher::spawn_event_watchers(app.clone(), db.clone(), Arc::clone(&scheduler));
 
         scheduler
     })

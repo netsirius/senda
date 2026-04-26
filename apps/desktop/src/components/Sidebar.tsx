@@ -18,6 +18,12 @@ const Sidebar: Component = () => {
         <A class="nav-link" classList={{ active: isActive("/") }} href="/">
           Catalog
         </A>
+        <A class="nav-link" classList={{ active: isActive("/mcps") }} href="/mcps">
+          MCP servers
+        </A>
+        <A class="nav-link" classList={{ active: isActive("/skills") }} href="/skills">
+          Skills
+        </A>
         <A class="nav-link" classList={{ active: isActive("/history") }} href="/history">
           History
         </A>

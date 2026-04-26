@@ -1,5 +1,6 @@
 import { createResource, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { CatalogEntry } from "senda-shared-types";
 
 async function fetchCatalog(): Promise<CatalogEntry[]> {
@@ -13,6 +14,11 @@ async function fetchCatalog(): Promise<CatalogEntry[]> {
  */
 function createCatalogStore() {
   const [catalog, { refetch, mutate }] = createResource(fetchCatalog);
+
+  // Auto-refresh when the backend signals a write — save_agent /
+  // delete_agent / fs-watcher all emit `agents:changed`.
+  void listen("agents:changed", () => refetch());
+
   return { catalog, refetch, mutate };
 }
 

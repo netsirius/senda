@@ -132,23 +132,27 @@ const AgentDetail: Component = () => {
               </button>
               <button
                 class="btn-danger"
-                disabled={isExternal()}
                 onClick={async () => {
                   const a = agent();
-                  if (!a) return;
-                  if (
-                    !confirm(
-                      `Delete "${a.name}"? This removes the canonical document and the per-CLI artefacts in ~/.copilot/, ~/.claude/, ~/.gemini/.`,
-                    )
-                  ) {
+                  if (!a) {
+                    alert("No agent loaded — try Refresh from the catalog.");
+                    return;
+                  }
+                  const e = targetEntry();
+                  const external =
+                    e && e.kind === "agent" && e.source.kind === "external";
+                  const message = external
+                    ? `"${a.name}" lives outside Senda (in your CLI's native folder). Delete the native file?`
+                    : `Delete "${a.name}"? This removes the canonical document and any generated per-CLI artefacts.`;
+                  if (!confirm(message)) {
                     return;
                   }
                   try {
                     await invoke("delete_agent", { name: a.name, draft: false });
                     await refetchCatalog();
                     navigate("/");
-                  } catch (e) {
-                    alert(`Delete failed: ${e}`);
+                  } catch (err) {
+                    alert(`Delete failed: ${err}`);
                   }
                 }}
               >

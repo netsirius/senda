@@ -12,6 +12,8 @@ import AddRepository from "./pages/AddRepository";
 import RepoDetail from "./pages/RepoDetail";
 import Automations from "./pages/Automations";
 import CreateAutomation from "./pages/CreateAutomation";
+import AgentEditor from "./pages/AgentEditor";
+import CreateWizard from "./pages/CreateWizard";
 
 import "./styles.css";
 
@@ -32,6 +34,8 @@ render(
       <Route path="/repos/:id" component={RepoDetail} />
       <Route path="/automations" component={Automations} />
       <Route path="/automations/new" component={CreateAutomation} />
+      <Route path="/agent/edit" component={AgentEditor} />
+      <Route path="/create" component={CreateWizard} />
     </Router>
   ),
   root,

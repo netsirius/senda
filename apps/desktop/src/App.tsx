@@ -11,6 +11,10 @@ const App: ParentComponent = (props) => {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
       switch (e.key.toLowerCase()) {
+        case "n":
+          e.preventDefault();
+          navigate("/create");
+          break;
         case ",":
           e.preventDefault();
           navigate("/settings");

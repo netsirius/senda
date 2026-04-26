@@ -16,6 +16,7 @@ use commands::automations::{
     create_automation, delete_automation, list_automation_runs, list_automations,
     run_automation_now, set_automation_enabled,
 };
+use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent};
 use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
 use commands::greeting::hello_world;
 use commands::oauth::{github_device_authorize, github_device_poll};
@@ -56,6 +57,10 @@ pub fn run() {
             set_automation_enabled,
             run_automation_now,
             list_automation_runs,
+            save_agent,
+            delete_agent,
+            list_drafts,
+            read_agent_source,
         ])
         .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");

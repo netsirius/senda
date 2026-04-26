@@ -56,9 +56,14 @@ const Catalog: Component = () => {
                 : `${counts().all} agent${counts().all === 1 ? "" : "s"} found.`}
             </p>
           </div>
-          <button class="btn-secondary" onClick={() => refetchCatalog()}>
-            Refresh
-          </button>
+          <div class="catalog-header-actions">
+            <A class="btn-primary" href="/create">
+              New agent
+            </A>
+            <button class="btn-secondary" onClick={() => refetchCatalog()}>
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div class="catalog-controls">

@@ -99,7 +99,16 @@ const AgentDetail: Component = () => {
               >
                 Run agent
               </button>
-              <button class="btn-secondary" disabled={isExternal()}>
+              <button
+                class="btn-secondary"
+                disabled={isExternal()}
+                onClick={() => {
+                  const entry = targetEntry();
+                  const path =
+                    entry && entry.kind === "agent" ? entry.canonicalPath : null;
+                  navigate(path ? `/agent/edit?path=${encodeURIComponent(path)}` : "/agent/edit");
+                }}
+              >
                 Edit
               </button>
             </div>

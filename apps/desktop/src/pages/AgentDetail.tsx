@@ -1,10 +1,21 @@
-import { createMemo, For, Show, type Component } from "solid-js";
+import { createMemo, createResource, For, Show, type Component } from "solid-js";
 import { A, useNavigate, useParams } from "@solidjs/router";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentCli, McpServerSpec } from "senda-shared-types";
 
 import { catalog as entries, refetchCatalog } from "../stores/catalog";
 import { renderMarkdown } from "../lib/markdown";
+
+interface ExecutionRow {
+  id: string;
+  agentId: string;
+  cli: string;
+  startedAt: number;
+  endedAt: number | null;
+  exitCode: number | null;
+  promptHash: string;
+  dryRun: boolean;
+}
 
 const CLI_LABEL: Record<AgentCli, string> = {
   copilot: "Copilot",
@@ -57,6 +68,13 @@ const AgentDetail: Component = () => {
     const a = agent();
     return a ? renderMarkdown(a.body || "_No prompt body._") : "";
   });
+
+  const [recentRuns] = createResource(
+    () => targetEntry()?.kind === "agent" ? targetEntry()!.id : null,
+    (id) => (id ? invoke<ExecutionRow[]>("list_executions_for_agent", { agentId: id, limit: 10 }) : Promise.resolve([])),
+  );
+
+  const reveal = (path: string) => invoke("reveal_in_finder", { path });
 
   const mcpServers = createMemo(() => {
     const a = agent();
@@ -221,6 +239,71 @@ const AgentDetail: Component = () => {
             <h2>Prompt</h2>
             <article class="markdown-body" innerHTML={renderedBody()} />
           </section>
+
+          <section class="detail-block">
+            <h2>Recent runs</h2>
+            <Show
+              when={(recentRuns() ?? []).length > 0}
+              fallback={<p class="muted">No runs yet — kick one off with the Run button above.</p>}
+            >
+              <table class="mcp-table">
+                <thead>
+                  <tr>
+                    <th>Started</th>
+                    <th>CLI</th>
+                    <th>Duration</th>
+                    <th>Exit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={recentRuns()}>
+                    {(r) => (
+                      <tr>
+                        <td>{new Date(r.startedAt * 1000).toLocaleString()}</td>
+                        <td><code>{r.cli}</code></td>
+                        <td>
+                          {r.endedAt
+                            ? `${r.endedAt - r.startedAt}s`
+                            : <span class="muted">running…</span>}
+                        </td>
+                        <td>
+                          <Show when={r.exitCode != null} fallback={<span class="muted">—</span>}>
+                            <span class={r.exitCode === 0 ? "status status--succeeded" : "status status--failed"}>
+                              {r.exitCode}
+                            </span>
+                          </Show>
+                        </td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </Show>
+          </section>
+
+          <Show
+            when={(() => {
+              const e = targetEntry();
+              return e && e.kind === "agent" ? e.canonicalPath : null;
+            })()}
+          >
+            {(canonicalPath) => (
+              <section class="detail-block">
+                <h2>Files on disk</h2>
+                <p class="muted small">Click to reveal in your file manager.</p>
+                <ul class="env-list">
+                  <li>
+                    <button
+                      class="btn-secondary small"
+                      onClick={() => reveal(canonicalPath())}
+                    >
+                      📂 {canonicalPath()}
+                    </button>
+                  </li>
+                </ul>
+              </section>
+            )}
+          </Show>
         </section>
       )}
     </Show>

@@ -10,6 +10,7 @@ interface AutomationRow {
   triggerKind: string;
   triggerConfig: string;
   guards: string;
+  promptTemplate: string | null;
   enabled: boolean;
   createdAt: number;
   lastRunAt: number | null;
@@ -48,6 +49,22 @@ const Automations: Component = () => {
 
   const runNow = async (row: AutomationRow) => {
     await invoke("run_automation_now", { id: row.id, dryRun: false });
+  };
+
+  const testWebhook = async (row: AutomationRow) => {
+    try {
+      const config = JSON.parse(row.triggerConfig);
+      const path = config.path;
+      if (!path) return;
+      const status = await invoke<number>("webhook_self_test", {
+        path,
+        body: prompt("Body to POST (JSON):", '{"source":"senda-self-test"}') ?? null,
+      });
+      alert(`POST returned ${status}.`);
+      await refetch();
+    } catch (e) {
+      alert(`Test failed: ${e}`);
+    }
   };
 
   return (
@@ -111,10 +128,15 @@ const Automations: Component = () => {
                   <button class="btn-secondary" onClick={() => runNow(row)}>
                     Run now
                   </button>
+                  <Show when={row.triggerKind === "webhook"}>
+                    <button class="btn-secondary" onClick={() => testWebhook(row)}>
+                      Test webhook
+                    </button>
+                  </Show>
                   <button class="btn-secondary" onClick={() => toggle(row)}>
                     {row.enabled ? "Pause" : "Resume"}
                   </button>
-                  <button class="btn-secondary" onClick={() => remove(row)}>
+                  <button class="btn-danger" onClick={() => remove(row)}>
                     Delete
                   </button>
                 </footer>

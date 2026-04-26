@@ -160,6 +160,16 @@ pub async fn list_executions(
         .map_err(|e| format!("db: {e}"))
 }
 
+#[tauri::command]
+pub async fn list_executions_for_agent(
+    db: tauri::State<'_, Db>,
+    agent_id: String,
+    limit: Option<i64>,
+) -> Result<Vec<crate::db::ExecutionRow>, String> {
+    db.list_executions_for_agent(&agent_id, limit.unwrap_or(50))
+        .map_err(|e| format!("db: {e}"))
+}
+
 // ── internals ────────────────────────────────────────────────────────────────
 
 fn build_command(args: &RunAgentArgs) -> CommandBuilder {

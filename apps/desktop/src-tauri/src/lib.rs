@@ -18,17 +18,21 @@ mod sync;
 use commands::agents::read_catalog;
 use commands::automations::{
     create_automation, delete_automation, list_automation_runs, list_automations,
-    run_automation_now, set_automation_enabled,
+    list_recent_automation_runs, run_automation_now, set_automation_enabled, webhook_self_test,
 };
 use commands::discovery::{
-    add_mcp, delete_mcp, delete_skill, list_builtin_tools, list_installed_mcps, list_skills,
+    add_mcp, create_skill, delete_mcp, delete_skill, list_builtin_tools, list_installed_mcps,
+    list_skills,
 };
 use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent};
-use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
+use commands::execution::{
+    cancel_execution, list_executions, list_executions_for_agent, run_agent, Executions,
+};
 use commands::generate::generate_agent;
 use commands::oauth::{github_device_authorize, github_device_poll};
 use commands::publish::publish_agent;
 use commands::repos::{add_repo, disconnect_repo, list_repos, sync_repo};
+use commands::system::reveal_in_finder;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -65,6 +69,10 @@ pub fn run() {
             set_automation_enabled,
             run_automation_now,
             list_automation_runs,
+            list_recent_automation_runs,
+            webhook_self_test,
+            list_executions_for_agent,
+            reveal_in_finder,
             save_agent,
             delete_agent,
             list_drafts,
@@ -77,6 +85,7 @@ pub fn run() {
             add_mcp,
             delete_mcp,
             delete_skill,
+            create_skill,
         ])
         .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");

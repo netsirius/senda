@@ -126,3 +126,28 @@ pub async fn list_automation_runs(
     db.list_automation_runs(automation_id, limit.unwrap_or(50))
         .map_err(|e| format!("db: {e}"))
 }
+
+#[tauri::command]
+pub async fn list_recent_automation_runs(
+    db: tauri::State<'_, Db>,
+    limit: Option<i64>,
+) -> Result<Vec<AutomationRunRow>, String> {
+    db.list_recent_automation_runs(limit.unwrap_or(100))
+        .map_err(|e| format!("db: {e}"))
+}
+
+/// Fire a synthetic POST against the local webhook server. Useful for testing
+/// a freshly-created webhook automation without leaving the app.
+#[tauri::command]
+pub async fn webhook_self_test(path: String, body: Option<String>) -> Result<u16, String> {
+    let url = format!("http://127.0.0.1:9876/hook/{path}");
+    let body = body.unwrap_or_else(|| "{\"source\":\"senda-self-test\"}".to_string());
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("self-test: {e}"))?;
+    Ok(resp.status().as_u16())
+}

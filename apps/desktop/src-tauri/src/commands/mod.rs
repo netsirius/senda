@@ -7,3 +7,4 @@ pub mod generate;
 pub mod oauth;
 pub mod publish;
 pub mod repos;
+pub mod system;

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use senda_core::AgentCli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use tauri::Emitter;
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -91,7 +92,7 @@ fn default_type() -> String {
 }
 
 #[tauri::command]
-pub async fn add_mcp(args: AddMcpArgs) -> Result<(), String> {
+pub async fn add_mcp(app: tauri::AppHandle, args: AddMcpArgs) -> Result<(), String> {
     let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
     let path = mcp_config_path(args.cli, &home);
     if let Some(parent) = path.parent() {
@@ -124,11 +125,13 @@ pub async fn add_mcp(args: AddMcpArgs) -> Result<(), String> {
     }
 
     upsert_mcp_entry(&mut root, &args.name, Value::Object(entry));
-    write_pretty(&path, &root)
+    write_pretty(&path, &root)?;
+    let _ = app.emit("mcps:changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_mcp(cli: AgentCli, name: String) -> Result<(), String> {
+pub async fn delete_mcp(app: tauri::AppHandle, cli: AgentCli, name: String) -> Result<(), String> {
     let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
     let path = mcp_config_path(cli, &home);
     if !path.exists() {
@@ -142,11 +145,17 @@ pub async fn delete_mcp(cli: AgentCli, name: String) -> Result<(), String> {
     {
         servers.remove(&name);
     }
-    write_pretty(&path, &root)
+    write_pretty(&path, &root)?;
+    let _ = app.emit("mcps:changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_skill(cli: AgentCli, name: String) -> Result<(), String> {
+pub async fn delete_skill(
+    app: tauri::AppHandle,
+    cli: AgentCli,
+    name: String,
+) -> Result<(), String> {
     if !matches!(cli, AgentCli::ClaudeCode) {
         return Err("only Claude Code skills are managed by Senda today".into());
     }
@@ -158,7 +167,40 @@ pub async fn delete_skill(cli: AgentCli, name: String) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("not a directory: {}", dir.display()));
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| format!("delete: {e}"))
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("delete: {e}"))?;
+    let _ = app.emit("skills:changed", ());
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSkillArgs {
+    pub cli: AgentCli,
+    pub name: String,
+    pub description: String,
+    pub body: String,
+}
+
+#[tauri::command]
+pub async fn create_skill(app: tauri::AppHandle, args: CreateSkillArgs) -> Result<String, String> {
+    if !matches!(args.cli, AgentCli::ClaudeCode) {
+        return Err("only Claude Code skills are managed by Senda today".into());
+    }
+    let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
+    let dir = home.join(".claude").join("skills").join(&args.name);
+    if dir.exists() {
+        return Err(format!("skill `{}` already exists", args.name));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
+    let skill_md = format!(
+        "---\nname: {}\ndescription: {}\n---\n\n{}\n",
+        args.name,
+        args.description.replace('\n', " "),
+        args.body
+    );
+    std::fs::write(dir.join("SKILL.md"), skill_md).map_err(|e| format!("write: {e}"))?;
+    let _ = app.emit("skills:changed", ());
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]

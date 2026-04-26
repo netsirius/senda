@@ -325,6 +325,61 @@ impl Db {
         Ok(n as u32)
     }
 
+    pub fn list_recent_automation_runs(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<AutomationRunRow>, DbError> {
+        let conn = self.0.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, automation_id, started_at, ended_at, status, output_text, error_text, dry_run \
+             FROM automation_runs ORDER BY started_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok(AutomationRunRow {
+                    id: row.get(0)?,
+                    automation_id: row.get(1)?,
+                    started_at: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    status: row.get(4)?,
+                    output_text: row.get(5)?,
+                    error_text: row.get(6)?,
+                    dry_run: row.get::<_, i64>(7)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn list_executions_for_agent(
+        &self,
+        agent_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ExecutionRow>, DbError> {
+        let conn = self.0.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, agent_id, agent_source, cli, started_at, ended_at, exit_code, prompt_hash, cwd, dry_run \
+             FROM executions WHERE agent_id = ?1 ORDER BY started_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![agent_id, limit], |row| {
+                Ok(ExecutionRow {
+                    id: row.get(0)?,
+                    agent_id: row.get(1)?,
+                    agent_source: row.get(2)?,
+                    cli: row.get(3)?,
+                    started_at: row.get(4)?,
+                    ended_at: row.get(5)?,
+                    exit_code: row.get(6)?,
+                    prompt_hash: row.get(7)?,
+                    cwd: row.get(8)?,
+                    dry_run: row.get::<_, i64>(9)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn list_automation_runs(
         &self,
         automation_id: i64,

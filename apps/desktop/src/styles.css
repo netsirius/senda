@@ -478,6 +478,25 @@ code {
   word-break: break-all;
 }
 
+.btn-secondary.small,
+.btn-primary.small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.run-output {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .muted.small {
   font-size: 11px;
   margin-top: 6px;

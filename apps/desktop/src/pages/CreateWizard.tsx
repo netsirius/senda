@@ -9,6 +9,9 @@ interface Template {
   name: string;
   description: string;
   source: string;
+  category?: string;
+  /** MCPs that should be installed for this template's tools to work. */
+  mcps?: string[];
 }
 
 interface DetectedAgent {
@@ -24,67 +27,265 @@ interface GenerateResult {
 }
 
 const TEMPLATES: Template[] = [
-  template(
+  // ── Generic (no MCP needed) ────────────────────────────────────────────
+  simpleTemplate(
     "code-reviewer",
     "Code reviewer",
     "Reviews diffs and suggests improvements.",
+    "Generic",
     "Review the following diff and propose concrete improvements. Be terse.",
   ),
-  template(
+  simpleTemplate(
     "pr-summarizer",
     "PR summarizer",
     "Generates a one-paragraph summary of a pull request.",
+    "Generic",
     "Summarize this pull request in three bullet points.",
   ),
-  template(
-    "triage-emails",
-    "Email triage",
-    "Classifies inbound emails and drafts a response.",
-    "Classify the email and draft a reply.",
-  ),
-  template(
-    "ticket-classifier",
-    "Ticket classifier",
-    "Tags an inbound ticket with a single category and priority.",
-    "Pick a single category and priority for the ticket.",
-  ),
-  template(
+  simpleTemplate(
     "documentation-writer",
     "Docs writer",
     "Writes user-facing documentation for a feature.",
+    "Generic",
     "Write clear documentation for the following feature.",
   ),
-  template(
+  simpleTemplate(
     "test-generator",
     "Test generator",
     "Generates unit tests for a target file.",
+    "Generic",
     "Generate unit tests covering the listed cases.",
   ),
-  template(
+  simpleTemplate(
     "changelog-generator",
     "Changelog generator",
     "Builds a CHANGELOG entry from recent commits.",
+    "Generic",
     "Group the commits by category and produce a CHANGELOG entry.",
   ),
-  template(
+  simpleTemplate(
     "security-auditor",
     "Security auditor",
     "Looks for OWASP-style issues in a code change.",
+    "Generic",
     "Audit the diff for security issues. Report findings with severity.",
   ),
-  template(
+
+  // ── MCP-aware (need an MCP installed) ──────────────────────────────────
+  mcpTemplate({
+    id: "jira-triage-agent",
+    name: "Jira triager",
+    description: "Triage tickets de Jira con prioridad y squad. Necesita mcp/atlassian.",
+    category: "Jira",
+    mcps: ["atlassian"],
+    tools: [
+      "jira/search_issues",
+      "jira/get_issue",
+      "jira/transition_issue",
+      "jira/add_comment",
+      "jira/assign_issue",
+    ],
+    body: `Eres el triager de tickets para nuestro Jira.
+
+## Constantes (sustituye a tu setup)
+
+- **Project key**: PLAT
+- **Workflow**: Backlog → To Refine → Ready → In Progress → Code Review → Done
+- **Squads**: Platform, Billing, Growth, SRE
+
+## Reglas
+
+1. Solo tickets en estado **Backlog** creados últimas 4h.
+2. Si menciona "down/p0/production" → priority=Blocker, transition a "To Refine", asignar a Platform squad.
+3. Si menciona "billing/stripe/invoice" → squad Billing.
+4. Si parece feature request sin criterio de aceptación → comentar pidiendo: customer impact + caso de uso concreto.
+5. Si dudas → no toques, comenta "/cc @hsantos triage manual".
+
+## Output
+
+Lista qué hiciste:
+- TICKET-1234 → priority=Blocker, squad=Platform
+- TICKET-1235 → comentado, no asignado (ambiguo)
+`,
+  }),
+  mcpTemplate({
+    id: "confluence-publisher",
+    name: "Confluence publisher",
+    description: "Publica/actualiza páginas en Confluence. Para usar como step 2 de un chain.",
+    category: "Confluence",
+    mcps: ["atlassian"],
+    tools: [
+      "confluence/search",
+      "confluence/get_page",
+      "confluence/create_page",
+      "confluence/update_page",
+    ],
+    body: `Eres el publicador de Confluence.
+
+Recibes en {event} un Markdown listo para publicar (típicamente desde otro
+agente que generó el contenido).
+
+## Constantes
+
+- **Space**: ENG
+- **Página destino**: el primer header (#) del Markdown será el título.
+
+## Tarea
+
+1. Extrae el título del primer #.
+2. \`confluence/search\` por título exacto en el space.
+3. Si existe → \`confluence/update_page\` (replace).
+4. Si no → \`confluence/create_page\` bajo el space.
+
+## Output
+
+Devuelve el link de la página final.
+`,
+  }),
+  mcpTemplate({
+    id: "linear-incident-creator",
+    name: "Linear incident creator",
+    description: "Crea incidents en Linear. Útil como step 2 cuando el primero detecta P0.",
+    category: "Linear",
+    mcps: ["linear"],
+    tools: ["linear/create_issue", "linear/list_issues"],
+    body: `Eres el creador de incidents de Linear.
+
+Recibes en {event} la descripción de un problema (típicamente desde otro
+agente que detectó un fallo).
+
+## Constantes
+
+- **Team**: TEAM_PLATFORM
+- **Label**: incident-from-senda
+
+## Tarea
+
+1. Comprueba si ya existe issue similar (\`linear/list_issues\` filtrando por
+   label "incident-from-senda" abiertos last 24h).
+2. Si NO existe:
+   \`linear/create_issue\`:
+     team: TEAM_PLATFORM
+     title: extrae headline del payload
+     description: el payload completo
+     priority: 1 (Urgent)
+     labels: ["incident-from-senda"]
+3. Si existe → no dupliques, devuelve "duplicate of LIN-XXX".
+`,
+  }),
+  mcpTemplate({
+    id: "slack-notifier",
+    name: "Slack notifier",
+    description: "Postea en Slack. Step final típico para notificar al equipo.",
+    category: "Slack",
+    mcps: ["slack"],
+    tools: ["slack/post_message"],
+    body: `Eres el notificador de Slack.
+
+Recibes en {event} un mensaje listo para postear.
+
+## Constantes
+
+- **Canal por defecto**: #platform-alerts
+
+## Tarea
+
+1. Si el payload incluye un canal específico al inicio (formato \`channel:#xxx\\n…\`),
+   usa ese canal. Si no, usa #platform-alerts.
+2. \`slack/post_message\` con el mensaje formateado en mrkdwn.
+
+## Output
+
+Devuelve el ts del mensaje y el channel id.
+`,
+  }),
+  mcpTemplate({
+    id: "github-pr-reviewer",
+    name: "GitHub PR reviewer",
+    description: "Primera pasada de revisión de PR. Detecta riesgos sin aprobar/mergear.",
+    category: "GitHub",
+    mcps: ["github"],
+    tools: [
+      "github/get_pull_request",
+      "github/get_pull_request_files",
+      "github/add_pr_comment",
+    ],
+    body: `Eres el revisor de PRs de primera pasada.
+
+Recibes en {event} un payload con el PR (típicamente del webhook de GitHub).
+
+## Tarea
+
+1. \`github/get_pull_request\` para detalles.
+2. \`github/get_pull_request_files\` para el diff por fichero.
+3. Analiza:
+   - **Riesgos**: migrations, public API changes, security-sensitive paths,
+     missing tests
+   - **TL;DR** del cambio
+4. \`github/add_pr_comment\` con un comentario top-level que incluya:
+     ## TL;DR
+     <párrafo>
+     ## Risks
+     - <riesgo 1>
+     - <riesgo 2>
+
+## Reglas
+
+- Si no hay nada notable, comenta solo el TL;DR.
+- NO apruebes ni mergees el PR — solo comentas.
+`,
+  }),
+  mcpTemplate({
+    id: "postgres-enricher",
+    name: "Postgres enricher",
+    description: "Enriquece tickets/issues con datos de tu DB. Solo SELECT.",
+    category: "Data",
+    mcps: ["postgres"],
+    tools: ["postgres/query"],
+    body: `Eres el enriquecedor con datos de Postgres.
+
+Recibes en {event} un identificador (ticket id, customer email, etc).
+
+## Constantes
+
+- Solo SELECT — nunca UPDATE / DELETE / INSERT.
+- Schema relevante: tabla \`customers\`, \`subscriptions\`, \`tickets_meta\`.
+
+## Tarea
+
+1. Identifica qué entidad menciona el payload.
+2. \`postgres/query\` con SELECT para obtener:
+   - tier (free / pro / enterprise)
+   - mrr
+   - signup_date
+   - account_owner_email
+3. Devuelve los datos en JSON estructurado para que el siguiente agente
+   los use.
+`,
+  }),
+
+  // ── Meta ───────────────────────────────────────────────────────────────
+  simpleTemplate(
     "agent-creator",
     "Agent creator (meta)",
     "Helps you author other Senda agents.",
+    "Generic",
     "Help me write a canonical Senda agent for the use case I describe.",
   ),
 ];
 
-function template(id: string, name: string, description: string, body: string): Template {
+function simpleTemplate(
+  id: string,
+  name: string,
+  description: string,
+  category: string,
+  body: string,
+): Template {
   return {
     id,
     name,
     description,
+    category,
     source: `---
 name: ${id}
 description: ${description}
@@ -96,6 +297,35 @@ tools: []
 
 ${body}
 `,
+  };
+}
+
+interface McpTemplateOptions {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  mcps: string[];
+  tools: string[];
+  body: string;
+}
+
+function mcpTemplate(opts: McpTemplateOptions): Template {
+  const tools = opts.tools.length > 0 ? `[${opts.tools.join(", ")}]` : "[]";
+  return {
+    id: opts.id,
+    name: opts.name,
+    description: opts.description,
+    category: opts.category,
+    mcps: opts.mcps,
+    source: `---
+name: ${opts.id}
+description: ${opts.description}
+targets: [copilot]
+tools: ${tools}
+---
+
+${opts.body}`,
   };
 }
 
@@ -113,7 +343,6 @@ const CreateWizard: Component = () => {
   // itself drives what's rendered, so we just write to setMode without
   // reading it.
   const [, setMode] = createSignal<Mode | null>(null);
-  const [selected, setSelected] = createSignal<Template | null>(null);
   const [intent, setIntent] = createSignal("");
   const [primaryCli, setPrimaryCli] = createSignal<AgentCli>("copilot");
   const [generating, setGenerating] = createSignal(false);
@@ -260,20 +489,50 @@ Write your prompt here.
 
       <Show when={step() === "template"}>
         <section class="detail-block">
-          <h2>Templates</h2>
+          <h2>Templates de agente</h2>
+          <p class="muted small">
+            Click sobre un template y se abre directamente en el editor con el body pre-rellenado.
+            Para combinaciones más complejas (cron + chain + variables) ve a{" "}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("/automations/new");
+              }}
+            >
+              /automations/new
+            </a>{" "}
+            que tiene 12 templates de automation con bodies más ricos.
+          </p>
           <div class="agent-grid">
             <For each={TEMPLATES}>
               {(t) => (
                 <article
-                  class="agent-card"
-                  classList={{ active: selected()?.id === t.id }}
-                  onClick={() => setSelected(t)}
+                  class="agent-card template-card-clickable"
+                  onClick={() => startFromTemplate(t)}
                   style={{ cursor: "pointer" }}
+                  title={`Click to open in editor: ${t.name}`}
                 >
                   <header class="agent-card-header">
                     <h3>{t.name}</h3>
+                    <Show when={t.category}>
+                      <span class="badge badge-muted">{t.category}</span>
+                    </Show>
                   </header>
                   <p class="agent-card-desc">{t.description}</p>
+                  <Show when={t.mcps && t.mcps.length > 0}>
+                    <p class="muted small">
+                      <strong>Needs MCP:</strong>{" "}
+                      <For each={t.mcps}>
+                        {(m, i) => (
+                          <>
+                            <code>{m}</code>
+                            {i() < t.mcps!.length - 1 ? ", " : ""}
+                          </>
+                        )}
+                      </For>
+                    </p>
+                  </Show>
                 </article>
               )}
             </For>
@@ -281,13 +540,6 @@ Write your prompt here.
           <div class="step-actions">
             <button class="btn-secondary" onClick={() => setStep("mode")}>
               Back
-            </button>
-            <button
-              class="btn-primary"
-              disabled={!selected()}
-              onClick={() => selected() && startFromTemplate(selected()!)}
-            >
-              Use template
             </button>
           </div>
         </section>

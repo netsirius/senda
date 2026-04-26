@@ -1142,3 +1142,17 @@ code {
 .chain-row select {
   flex: 1;
 }
+
+.template-card-clickable {
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.template-card-clickable:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.template-card-clickable:active {
+  transform: translateY(0);
+}

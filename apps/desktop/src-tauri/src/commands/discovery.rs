@@ -1,11 +1,16 @@
 //! Discovery commands — what MCP servers, tools, and skills are present on
 //! the user's machine. The editor uses these to feed autocomplete and the
 //! Skills page to render its list.
+//!
+//! `add_mcp` / `delete_mcp` write back into the CLI's own config file. Senda
+//! only owns the entry it adds — it never rewrites unrelated keys, and the
+//! file is read → mutated → written so other entries survive.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use senda_core::AgentCli;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +69,98 @@ pub async fn list_builtin_tools() -> Result<Vec<CliTools>, String> {
     ])
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AddMcpArgs {
+    pub cli: AgentCli,
+    pub name: String,
+    /// `local` (default) or `remote`. Remote MCPs use `url`; local ones use
+    /// `command` + optional `args` + optional `env`.
+    #[serde(default = "default_type")]
+    pub r#type: String,
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub url: Option<String>,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+fn default_type() -> String {
+    "local".to_string()
+}
+
+#[tauri::command]
+pub async fn add_mcp(args: AddMcpArgs) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
+    let path = mcp_config_path(args.cli, &home);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    }
+
+    let mut root = read_or_default(&path);
+    // Build the entry. We always write `command` for local MCPs and `url`
+    // for remote ones — older Copilot / Gemini configs accept extra keys.
+    let mut entry = Map::new();
+    entry.insert("type".into(), Value::String(args.r#type.clone()));
+    if let Some(command) = args.command {
+        entry.insert("command".into(), Value::String(command));
+    }
+    if !args.args.is_empty() {
+        entry.insert(
+            "args".into(),
+            Value::Array(args.args.into_iter().map(Value::String).collect()),
+        );
+    }
+    if let Some(url) = args.url {
+        entry.insert("url".into(), Value::String(url));
+    }
+    if !args.env.is_empty() {
+        let mut env_map = Map::new();
+        for (k, v) in args.env {
+            env_map.insert(k, Value::String(v));
+        }
+        entry.insert("env".into(), Value::Object(env_map));
+    }
+
+    upsert_mcp_entry(&mut root, &args.name, Value::Object(entry));
+    write_pretty(&path, &root)
+}
+
+#[tauri::command]
+pub async fn delete_mcp(cli: AgentCli, name: String) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
+    let path = mcp_config_path(cli, &home);
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut root = read_or_default(&path);
+    if let Some(servers) = root
+        .as_object_mut()
+        .and_then(|m| m.get_mut("mcpServers"))
+        .and_then(|v| v.as_object_mut())
+    {
+        servers.remove(&name);
+    }
+    write_pretty(&path, &root)
+}
+
+#[tauri::command]
+pub async fn delete_skill(cli: AgentCli, name: String) -> Result<(), String> {
+    if !matches!(cli, AgentCli::ClaudeCode) {
+        return Err("only Claude Code skills are managed by Senda today".into());
+    }
+    let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
+    let dir = home.join(".claude").join("skills").join(&name);
+    if !dir.exists() {
+        return Ok(());
+    }
+    if !dir.is_dir() {
+        return Err(format!("not a directory: {}", dir.display()));
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("delete: {e}"))
+}
+
 #[tauri::command]
 pub async fn list_skills() -> Result<Vec<SkillEntry>, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;
@@ -98,6 +195,54 @@ pub async fn list_skills() -> Result<Vec<SkillEntry>, String> {
     }
 
     Ok(out)
+}
+
+// ── shared helpers for add/delete ───────────────────────────────────────────
+
+fn mcp_config_path(cli: AgentCli, home: &Path) -> PathBuf {
+    match cli {
+        AgentCli::Copilot => home.join(".copilot").join("mcp-servers.json"),
+        AgentCli::ClaudeCode => {
+            // Prefer ~/.claude/settings.json since it's the documented user-scope
+            // file; fall back to ~/.claude.json if that one already exists.
+            let settings = home.join(".claude").join("settings.json");
+            let claude_json = home.join(".claude.json");
+            if claude_json.exists() && !settings.exists() {
+                claude_json
+            } else {
+                settings
+            }
+        }
+        AgentCli::Gemini => home.join(".gemini").join("settings.json"),
+    }
+}
+
+fn read_or_default(path: &Path) -> Value {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}))
+}
+
+fn upsert_mcp_entry(root: &mut Value, name: &str, entry: Value) {
+    let obj = match root.as_object_mut() {
+        Some(o) => o,
+        None => {
+            *root = json!({});
+            root.as_object_mut().expect("just initialized")
+        }
+    };
+    let servers = obj
+        .entry("mcpServers".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if let Some(map) = servers.as_object_mut() {
+        map.insert(name.to_string(), entry);
+    }
+}
+
+fn write_pretty(path: &Path, value: &Value) -> Result<(), String> {
+    let serialized = serde_json::to_string_pretty(value).map_err(|e| format!("encode: {e}"))?;
+    std::fs::write(path, serialized).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 // ── per-CLI MCP readers ─────────────────────────────────────────────────────

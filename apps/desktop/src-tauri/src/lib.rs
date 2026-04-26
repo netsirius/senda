@@ -20,7 +20,9 @@ use commands::automations::{
     create_automation, delete_automation, list_automation_runs, list_automations,
     run_automation_now, set_automation_enabled,
 };
-use commands::discovery::{list_builtin_tools, list_installed_mcps, list_skills};
+use commands::discovery::{
+    add_mcp, delete_mcp, delete_skill, list_builtin_tools, list_installed_mcps, list_skills,
+};
 use commands::editor::{delete_agent, list_drafts, read_agent_source, save_agent};
 use commands::execution::{cancel_execution, list_executions, run_agent, Executions};
 use commands::generate::generate_agent;
@@ -74,6 +76,9 @@ pub fn run() {
             list_builtin_tools,
             list_skills,
             generate_agent,
+            add_mcp,
+            delete_mcp,
+            delete_skill,
         ])
         .setup(move |app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready");

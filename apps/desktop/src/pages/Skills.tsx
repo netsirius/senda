@@ -1,7 +1,29 @@
 import { For, Show, type Component } from "solid-js";
-import { skills, refetchSkills } from "../stores/discovery";
+import { invoke } from "@tauri-apps/api/core";
+
+import { skills, refetchSkills, type SkillEntry } from "../stores/discovery";
 
 const Skills: Component = () => {
+  const remove = async (s: SkillEntry) => {
+    if (s.cli !== "claude-code") {
+      alert("Only Claude Code skills are managed by Senda today.");
+      return;
+    }
+    if (
+      !confirm(
+        `Delete skill "${s.name}"? This removes the entire folder at ${s.path} — undoable from outside the trash.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await invoke("delete_skill", { cli: s.cli, name: s.name });
+      await refetchSkills();
+    } catch (e) {
+      alert(`Delete failed: ${e}`);
+    }
+  };
+
   return (
     <section class="catalog">
       <header class="page-header">
@@ -41,8 +63,11 @@ const Skills: Component = () => {
                   <span class="badge badge-muted">{s.cli}</span>
                 </header>
                 <p class="agent-card-desc">{s.description ?? "No description."}</p>
-                <footer class="agent-card-footer">
+                <footer class="agent-card-footer agent-card-actions">
                   <code class="agent-card-path">{s.path}</code>
+                  <button class="btn-danger small" onClick={() => remove(s)}>
+                    Delete
+                  </button>
                 </footer>
               </article>
             )}

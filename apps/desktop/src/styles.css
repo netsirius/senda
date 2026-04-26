@@ -436,9 +436,29 @@ code {
 }
 
 .btn-primary:disabled,
-.btn-secondary:disabled {
+.btn-secondary:disabled,
+.btn-danger:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.btn-danger {
+  background: rgba(255, 83, 96, 0.18);
+  color: #ff8a93;
+  border: 1px solid #ff5360;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-danger:hover {
+  background: rgba(255, 83, 96, 0.28);
+}
+
+.btn-danger.small {
+  padding: 3px 8px;
+  font-size: 11px;
 }
 
 .muted.small {

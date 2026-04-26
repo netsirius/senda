@@ -1,8 +1,9 @@
 import { createMemo, For, Show, type Component } from "solid-js";
 import { A, useNavigate, useParams } from "@solidjs/router";
+import { invoke } from "@tauri-apps/api/core";
 import type { AgentCli, McpServerSpec } from "senda-shared-types";
 
-import { catalog as entries } from "../stores/catalog";
+import { catalog as entries, refetchCatalog } from "../stores/catalog";
 import { renderMarkdown } from "../lib/markdown";
 
 const CLI_LABEL: Record<AgentCli, string> = {
@@ -110,6 +111,30 @@ const AgentDetail: Component = () => {
                 }}
               >
                 Edit
+              </button>
+              <button
+                class="btn-danger"
+                disabled={isExternal()}
+                onClick={async () => {
+                  const a = agent();
+                  if (!a) return;
+                  if (
+                    !confirm(
+                      `Delete "${a.name}"? This removes the canonical document and the per-CLI artefacts in ~/.copilot/, ~/.claude/, ~/.gemini/.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    await invoke("delete_agent", { name: a.name, draft: false });
+                    await refetchCatalog();
+                    navigate("/");
+                  } catch (e) {
+                    alert(`Delete failed: ${e}`);
+                  }
+                }}
+              >
+                Delete
               </button>
             </div>
           </header>

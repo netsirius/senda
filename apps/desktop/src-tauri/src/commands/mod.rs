@@ -5,6 +5,7 @@ pub mod editor;
 pub mod execution;
 pub mod generate;
 pub mod oauth;
+pub mod os_scheduler;
 pub mod publish;
 pub mod repos;
 pub mod system;

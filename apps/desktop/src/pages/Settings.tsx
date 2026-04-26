@@ -1,4 +1,11 @@
-import { createSignal, type Component } from "solid-js";
+import { createResource, createSignal, Show, type Component } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
+
+interface OsSchedulerStatus {
+  installed: boolean;
+  platform: string;
+  path: string | null;
+}
 
 const STORAGE_KEY = "senda.settings";
 
@@ -30,7 +37,28 @@ function defaults(): SettingsShape {
 
 const Settings: Component = () => {
   const [settings, setSettings] = createSignal<SettingsShape>(loadSettings());
-  const [tab, setTab] = createSignal<"general" | "cli-paths">("general");
+  const [tab, setTab] = createSignal<"general" | "cli-paths" | "scheduler">("general");
+  const [osScheduler, { refetch: refetchOsScheduler }] = createResource(() =>
+    invoke<OsSchedulerStatus>("os_scheduler_status"),
+  );
+
+  const installOsScheduler = async () => {
+    try {
+      await invoke("os_scheduler_install");
+      await refetchOsScheduler();
+    } catch (e) {
+      alert(`Install failed: ${e}`);
+    }
+  };
+
+  const uninstallOsScheduler = async () => {
+    try {
+      await invoke("os_scheduler_uninstall");
+      await refetchOsScheduler();
+    } catch (e) {
+      alert(`Uninstall failed: ${e}`);
+    }
+  };
 
   const update = <K extends keyof SettingsShape>(key: K, value: SettingsShape[K]) => {
     const next = { ...settings(), [key]: value };
@@ -65,6 +93,13 @@ const Settings: Component = () => {
             onClick={() => setTab("cli-paths")}
           >
             CLI paths
+          </button>
+          <button
+            class="catalog-tab"
+            classList={{ active: tab() === "scheduler" }}
+            onClick={() => setTab("scheduler")}
+          >
+            Scheduler
           </button>
         </nav>
       </header>
@@ -123,6 +158,43 @@ const Settings: Component = () => {
           </div>
         </section>
       )}
+
+      <Show when={tab() === "scheduler"}>
+        <section class="detail-block">
+          <h2>OS-level scheduler</h2>
+          <p class="muted small">
+            Without this, cron automations only fire while Senda is open. Installing the
+            OS-level helper (a LaunchAgent on macOS, a systemd timer on Linux) wakes Senda's
+            scheduler every minute so cron keeps working with the app closed.
+          </p>
+          <Show when={osScheduler()} fallback={<p class="muted">Loading…</p>}>
+            {(s) => (
+              <div>
+                <p>
+                  Platform: <code>{s().platform}</code>
+                </p>
+                <Show when={s().path}>
+                  <p>
+                    Path: <code>{s().path}</code>
+                  </p>
+                </Show>
+                <Show
+                  when={s().installed}
+                  fallback={
+                    <button class="btn-primary" onClick={installOsScheduler}>
+                      Install OS-level scheduler
+                    </button>
+                  }
+                >
+                  <button class="btn-danger" onClick={uninstallOsScheduler}>
+                    Uninstall OS-level scheduler
+                  </button>
+                </Show>
+              </div>
+            )}
+          </Show>
+        </section>
+      </Show>
 
       <div class="settings-actions">
         <button class="btn-secondary" onClick={reset}>

@@ -42,6 +42,31 @@ pub struct SkillEntry {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToolList {
+    pub mcp: String,
+    pub tools: Vec<String>,
+}
+
+/// Spawn the named MCP and call `tools/list` so the editor can autocomplete
+/// with the *real* tool names instead of just a `<mcp>/` prefix. Returns
+/// empty list on any failure (the editor falls back to the prefix).
+///
+/// The frontend caches the result; tools rarely change between sessions.
+#[tauri::command]
+pub async fn introspect_mcp_tools(name: String) -> Result<McpToolList, String> {
+    use crate::mcp_client::McpClient;
+    let client = McpClient::spawn(&name)
+        .await
+        .map_err(|e| format!("spawn `{name}`: {e}"))?;
+    let tools = client
+        .list_tools()
+        .await
+        .map_err(|e| format!("list_tools: {e}"))?;
+    Ok(McpToolList { mcp: name, tools })
+}
+
 #[tauri::command]
 pub async fn list_installed_mcps() -> Result<Vec<InstalledMcp>, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home".to_string())?;

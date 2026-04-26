@@ -3887,6 +3887,8 @@ name = "senda-desktop"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "cron",
  "dirs 5.0.1",
  "hex",
  "keyring",

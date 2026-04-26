@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AgentCli } from "senda-shared-types";
 
 import { refetchCatalog } from "../stores/catalog";
-import { builtinTools, mcps } from "../stores/discovery";
+import { builtinTools, fetchMcpTools, mcpTools, mcps } from "../stores/discovery";
 
 interface Warning {
   target: AgentCli;
@@ -63,6 +63,12 @@ const AgentEditor: Component = () => {
     } else if (tmpl) {
       setSource(tmpl);
       applyParsedFromSource(tmpl);
+    }
+
+    // Warm up the MCP tools cache for whatever is installed so autocomplete
+    // has real names ready by the time the user clicks the Tools field.
+    for (const m of mcps() ?? []) {
+      void fetchMcpTools(m.name);
     }
   });
 
@@ -262,11 +268,16 @@ function availableTools(selectedTargets: AgentCli[]): string[] {
     const entry = (builtinTools() ?? []).find((b) => b.cli === t);
     entry?.tools.forEach((tool) => set.add(tool));
   }
-  // MCP tools — we don't introspect each MCP, but `<server>/<tool>` is a
-  // useful convention for canonical agents and the user can complete the
-  // server name from disk.
+  // MCP tools, introspected lazily into `mcpTools()`. Always also offer the
+  // bare `<mcp>/` prefix as a hint when the introspection failed.
+  const cached = mcpTools();
   for (const m of mcps() ?? []) {
-    set.add(`${m.name}/`);
+    const tools = cached[m.name];
+    if (tools && tools.length > 0) {
+      tools.forEach((t) => set.add(`${m.name}/${t}`));
+    } else {
+      set.add(`${m.name}/`);
+    }
   }
   return Array.from(set).sort();
 }

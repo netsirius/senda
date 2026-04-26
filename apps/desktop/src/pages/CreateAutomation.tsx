@@ -172,12 +172,12 @@ ${a.body}`;
                 <h3>{t.name}</h3>
                 <p>{t.description}</p>
                 <Show when={t.requires.length > 0}>
-                  <p class="muted small">
+                  <div class="muted small">
                     <strong>Requires:</strong>
                     <ul>
                       <For each={t.requires}>{(r) => <li>{r}</li>}</For>
                     </ul>
-                  </p>
+                  </div>
                 </Show>
                 <div class="template-card-actions">
                   <button class="btn-primary small" onClick={() => applyTemplate(t)}>

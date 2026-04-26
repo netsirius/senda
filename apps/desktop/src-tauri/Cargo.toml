@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
 
 senda-core = { workspace = true }
 senda-acp-client = { workspace = true }

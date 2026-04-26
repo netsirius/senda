@@ -60,6 +60,25 @@ pnpm -r typecheck
 SENDA_ACP_BIN=claude-code-acp cargo test -p senda-acp-client -- --nocapture
 ```
 
+## Install
+
+Once the first tagged release lands on GitHub:
+
+| Platform | Download                                                   |
+| -------- | ---------------------------------------------------------- |
+| macOS    | `Senda_<version>_universal.dmg`                            |
+| Windows  | `Senda_<version>_x64-setup.exe` (NSIS) or `_x64_en-US.msi` |
+| Linux    | `.deb` (Debian/Ubuntu), `.rpm` (Fedora), or `.AppImage`    |
+
+Linux Debian/Ubuntu:
+
+```bash
+sudo apt install ./senda_<version>_amd64.deb
+```
+
+See [docs/distribution.md](docs/distribution.md) for code-signing,
+auto-update wiring, and how to cut a release.
+
 ## License
 
 MIT — © Hector Santos &lt;netsirius@gmail.com&gt;

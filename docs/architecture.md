@@ -93,14 +93,24 @@ If pre-existing files in those folders are not registered in
 * `senda-agent-parser` keeps every transpiler behind a `Transpiler` trait so
   new CLIs can be added without touching the core.
 
-## Phase 0 acceptance
+## Phase status
 
-| Criterion                                                     | Status |
-| ------------------------------------------------------------- | ------ |
-| `cargo build --workspace` clean                               | ✅      |
-| `cargo clippy --workspace --all-targets -- -D warnings` clean | ✅      |
-| `cargo test --workspace` green (13 tests)                     | ✅      |
-| Tauri shell builds and registers `hello_world` IPC command    | ✅      |
-| ACP client crate compiles, has README, has integration test   | ✅      |
-| ACP integration test gated by `SENDA_ACP_BIN` env             | ✅      |
-| `tauri-specta`-generated bindings                             | ⏭ Phase 1 |
+| Phase | Highlights                                                                                  | Status |
+| ----- | ------------------------------------------------------------------------------------------- | ------ |
+| 0     | Workspace bootstrap, ACP client crate, Tauri shell, IPC smoke test                          | ✅      |
+| 1     | `read_catalog`, AgentDetail, PTY-backed runner, executions DB, History, Settings, shortcuts | ✅      |
+| 2     | git2-backed clone/pull/push, GitHub + Azure PR APIs, AddRepository wizard, sync engine      | ✅      |
+| 3     | senda-scheduler (cron + axum webhook + manual + guards), Automations CRUD UI                | ✅      |
+| 4     | save_agent / delete_agent / drafts / manifest, AgentEditor, CreateWizard with templates     | ✅      |
+| 5     | commit_and_push, publish_agent, PublishFlow page, published_agents tracking                 | ✅      |
+| 6     | Bundle targets across all platforms, release.yml, updater plugin, distribution docs         | ✅      |
+
+### Deferred work
+
+| Item                                  | Rationale                                                          |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `tauri-specta` auto-generated TS      | Hand-written bindings cover Phase 1-6; flip the build.rs in Phase 7. |
+| ACP path inside `run_agent`           | Subprocess via PTY ships today; Claude Code / Gemini ACP wiring deferred. |
+| MCP event watcher                     | Trigger plumbed; the polling watcher activates with a Phase 7 MCP integration. |
+| `Queue` / `Concurrent` backpressure   | `Skip` is wired; richer policies require per-automation channels.   |
+| Code signing                          | POC ships unsigned; see [`docs/distribution.md`](distribution.md).  |

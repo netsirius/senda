@@ -1156,3 +1156,25 @@ code {
 .template-card-clickable:active {
   transform: translateY(0);
 }
+
+.runtime-error-banner {
+  display: none;
+  background: #2a1518;
+  border: 1px solid #ff5360;
+  color: #ffb4b9;
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  border-radius: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.senda-footer {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 10px;
+  text-align: center;
+}

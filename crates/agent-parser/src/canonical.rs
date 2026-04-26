@@ -15,8 +15,18 @@ pub enum ParseError {
     MissingClosingFence,
     #[error("invalid YAML in frontmatter: {0}")]
     Yaml(#[from] serde_yaml::Error),
+    #[error("invalid TOML: {0}")]
+    Toml(String),
     #[error("`targets:` must contain at least one CLI")]
     EmptyTargets,
+    #[error("required field `{0}` missing from frontmatter")]
+    MissingField(&'static str),
+    #[error("frontmatter top level must be a YAML mapping")]
+    FrontmatterNotMap,
+    #[error("path does not point to a known CLI agents folder")]
+    UnknownCliFolder,
+    #[error("filesystem error: {0}")]
+    Io(std::io::Error),
 }
 
 const FENCE: &str = "---";

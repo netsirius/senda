@@ -22,6 +22,9 @@ apps/desktop/src-tauri/target/
 # ── tauri-specta auto-generated bindings (regenerated each build) ─────────────
 packages/shared-types/src/bindings.ts
 
+# ── TypeScript build artefacts ────────────────────────────────────────────────
+*.tsbuildinfo
+
 # ── Editor / OS ───────────────────────────────────────────────────────────────
 .DS_Store
 .idea/

@@ -7,7 +7,11 @@ use crate::cli::AgentCli;
 /// Where an agent comes from. Used by the UI to badge cards and decide
 /// whether the agent is editable.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgentSource {
     /// Agent in canonical format under `~/.senda/agents/`.
     Personal,
@@ -92,4 +96,26 @@ pub struct Agent {
     /// Path of the canonical document on disk, when applicable.
     pub canonical_path: Option<String>,
     pub warnings_count: u32,
+}
+
+/// Item in the catalog: either a successfully parsed agent or an error card
+/// for a file the parser couldn't read. Surfacing failures keeps the UI honest
+/// — the user sees what went wrong instead of seeing fewer agents than expected.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum CatalogEntry {
+    /// Boxed because [`Agent`] is much larger than the [`Error`] variant; this
+    /// keeps every entry in `Vec<CatalogEntry>` from carrying the larger
+    /// payload's footprint. The JSON shape is unchanged — serde flattens.
+    Agent(Box<Agent>),
+    Error {
+        id: String,
+        path: String,
+        source: AgentSource,
+        message: String,
+    },
 }

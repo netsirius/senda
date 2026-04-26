@@ -4,6 +4,7 @@
 
 mod commands;
 
+use commands::agents::read_catalog;
 use commands::greeting::hello_world;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,7 +18,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![hello_world])
+        .invoke_handler(tauri::generate_handler![hello_world, read_catalog])
         .setup(|_app| {
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "senda backend ready",);
             Ok(())

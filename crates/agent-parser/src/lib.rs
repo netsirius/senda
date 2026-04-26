@@ -6,10 +6,12 @@
 //! actual conversions and the warning system.
 
 pub mod canonical;
+pub mod native;
 pub mod transpilers;
 pub mod warnings;
 
 pub use canonical::{parse_canonical, serialize_canonical, ParseError};
+pub use native::{detect_cli, parse_from_file, parse_native, NativeAgent};
 pub use senda_core::CanonicalAgent;
 pub use transpilers::Transpiler;
 pub use warnings::Warning;

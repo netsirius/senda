@@ -448,8 +448,9 @@ code {
 .btn-primary:disabled,
 .btn-secondary:disabled,
 .btn-danger:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
+  filter: grayscale(0.6);
 }
 
 .btn-danger {

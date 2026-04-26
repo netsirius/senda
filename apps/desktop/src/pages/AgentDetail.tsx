@@ -115,12 +115,22 @@ const AgentDetail: Component = () => {
                 class="btn-primary"
                 onClick={() => navigate(`/agent/run/${encodeURIComponent(targetEntry()!.id)}`)}
                 disabled={agent()!.targets.length === 0}
+                title={
+                  agent()!.targets.length === 0
+                    ? "This agent has no `targets:` declared. Edit it and add at least one CLI."
+                    : ""
+                }
               >
                 Run agent
               </button>
               <button
                 class="btn-secondary"
                 disabled={isExternal()}
+                title={
+                  isExternal()
+                    ? "External agents are read-only. Use 'Import to Senda' from the catalog to copy it into ~/.senda/agents/ first."
+                    : ""
+                }
                 onClick={() => {
                   const entry = targetEntry();
                   const path =

@@ -192,7 +192,12 @@ const CreateAutomation: Component = () => {
             </select>
           </div>
           <div class="step-actions">
-            <button class="btn-primary" disabled={!agentId()} onClick={() => setStep("trigger")}>
+            <button
+              class="btn-primary"
+              disabled={!agentId()}
+              title={!agentId() ? "Pick an agent from the dropdown above first." : ""}
+              onClick={() => setStep("trigger")}
+            >
               Continue
             </button>
           </div>

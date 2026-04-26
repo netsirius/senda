@@ -237,6 +237,13 @@ ${body()}`;
               class="btn-primary"
               onClick={save}
               disabled={saving() || targets().length === 0}
+              title={
+                targets().length === 0
+                  ? "Pick at least one target CLI in the chips above."
+                  : saving()
+                    ? "Saving…"
+                    : ""
+              }
             >
               {saving() ? "Saving…" : "Save"}
             </button>
